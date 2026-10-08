@@ -1,6 +1,12 @@
 name: Publish Android stable release
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing public stable tag to verify and advance
+        required: true
+        type: string
   release:
     types: [published]
   push:
@@ -35,6 +41,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Validate platform and version
         run: node scripts/release.mjs --validate-version --tag "$RELEASE_TAG"
@@ -68,16 +76,16 @@ jobs:
         run: node scripts/ci-signing.mjs --cleanup
 
   advance-existing-release:
-    if: github.event_name == 'release' && github.repository == 'panda472328/yuyin-music-mobile' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'android-v')
+    if: github.repository == 'panda472328/yuyin-music-mobile' && ((github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'android-v')) || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'android-v')))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -86,8 +94,17 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Validate released tag against its source versions
         run: node scripts/release.mjs --validate-version --tag "$RELEASE_TAG"
+      - name: Require an existing public stable release
+        run: |
+          release_is_unstable=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '.isDraft or .isPrerelease')
+          if [ "$release_is_unstable" != "false" ]; then
+            echo "An existing public stable release is required."
+            exit 1
+          fi
       - name: Install public APK verification tools
         run: sdkmanager "build-tools;36.0.0"
       - name: Verify existing public APK and advance stable channel

@@ -56,6 +56,8 @@ Android 普通应用不能静默覆盖安装。安装 APK 时必须经过 Androi
 
 为避免本机和 CI 产物同时占用同一标签，手工发布的源码提交可使用 GitHub 标准 `[skip ci]` 标记，跳过 tag push 构建。`release.published` job 不受该标记影响。本次首次更新桥接版使用已在本机验收的最终 APK 和此标记；未来要让 tag 自动签名构建，维护者再配置前述 secrets 并使用普通发布提交。
 
+若已公开版本的事件工作流需要修复，不移动发行标签或替换 APK。将修复后的工作流提交到 main，然后在 Actions → Publish Android stable release → Run workflow 输入现有正式标签（如 `android-v0.1.3`）。手动入口使用 main 的工作流配置，检出指定标签的源码，要求 Release 已公开且不是 prerelease，再校验原附件并推进清单。SDK 初始化明确安装 `platform-tools`，不请求已被 Android 移除的旧 `tools` 包。
+
 由 Actions 的 `GITHUB_TOKEN` 发布时，GitHub 不会递归触发发布事件；原 tag 构建的脚本自行更新清单。人工网页／本机发布由发布事件推进。手工与事件流程同时写同版本相同文件时可以幂等完成；不同文件仍被拒绝，公开版本不被覆盖。
 
 ## 本地预览和故障恢复

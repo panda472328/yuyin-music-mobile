@@ -12,12 +12,15 @@ const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT
 if (!sdk || !fs.existsSync(artifact)) throw new Error('需要 ANDROID_HOME 和已构建的正式 APK。')
 const buildTools = path.join(sdk, 'build-tools', '36.0.0')
 const aapt = path.join(buildTools, process.platform === 'win32' ? 'aapt.exe' : 'aapt')
-const badging = execFileSync(aapt, ['dump', 'badging', artifact], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+// aapt on Windows cannot reliably decode Chinese absolute artifact paths.
+// Keep its argument relative and let the OS set the Unicode working directory.
+const artifactArgument = path.relative(root, artifact)
+const badging = execFileSync(aapt, ['dump', 'badging', artifactArgument], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 const packageLine = badging.split(/\r?\n/).find(line => line.startsWith('package: ')) || ''
 const value = name => packageLine.match(new RegExp(`\\b${name}='([^']*)'`))?.[1]
 if (value('name') !== 'com.yuyin.music.mobile' || value('versionName') !== config.version || Number(value('versionCode')) !== config.versionCode) throw new Error('APK 的应用 ID、versionName 或 versionCode 与发布源码不一致。')
 const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java'
-const verification = execFileSync(java, ['-jar', path.join(buildTools, 'lib', 'apksigner.jar'), 'verify', '--verbose', '--print-certs', artifact], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+const verification = execFileSync(java, ['-jar', path.join(buildTools, 'lib', 'apksigner.jar'), 'verify', '--verbose', '--print-certs', artifactArgument], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 const certificateDigests = [...verification.matchAll(/^Signer #\d+ certificate SHA-256 digest: ([a-f0-9]{64})$/gim)].map(match => match[1].toLowerCase())
 // Public certificate fingerprint from android-v0.1.2, not a private signing secret.
 const expected = '068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146'
