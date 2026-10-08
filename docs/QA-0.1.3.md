@@ -56,6 +56,12 @@
 
 仅在该新建 QA 实例内写入虚构原生存储夹具，包含收藏 1 首、歌单 1 个及歌曲 2 首、历史 1 项、队列 2 首，以及音量 0.36、随机播放、LRCLIB 来源和 1.25 秒歌词偏移。旧版启动、新版覆盖后及新版启动后，音乐库和偏好 JSON 逐字一致；新版实际登录引导显示正常，没有库读取错误。证据：`.qa/release-install-0.1.3-evidence.json` 及相邻界面记录。这证明非空受控数据在正式覆盖安装和启动后保留，不代表真实登录 Cookie 或登录后歌单界面已验证。
 
+## GitHub 正式发布与稳定通道
+
+正式 [android-v0.1.3](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.3) 已公开，仅包含一个最终 APK，匿名下载后的大小和 SHA-256 与本机构建一致。首次发布事件 [37799318914](https://github.com/panda472328/yuyin-music-mobile/actions/runs/37799318914) 因 SDK 初始化默认请求已被移除的 `tools` 包失败，当时清单保持 0.1.2，没有把失败记为通过。
+
+修复后的 main 工作流明确选择 `platform-tools`，并加入仅校验现有正式发布的手动重试入口。使用同一已发布 APK 重试的 [37801514949](https://github.com/panda472328/yuyin-music-mobile/actions/runs/37801514949) 全部通过，实际验证包名、版本、沿用签名、公开附件与下载校验后，自动将 `updates/stable.json` 推进到 0.1.3 / versionCode 4。没有移动已公开标签、重建或替换附件，也未配置或读取签名 secrets。
+
 ## 本机证据与限制
 
 本机证据保留在 `.qa/`，不提交源码，也不作为 Release 附件：
