@@ -48,12 +48,20 @@ import java.util.zip.GZIPInputStream;
 public final class YuyinMobilePlugin extends Plugin implements PlaybackService.Listener {
     private static final int MAX_RESPONSE = 2 * 1024 * 1024;
     private static final int MAX_STORE = 8 * 1024 * 1024;
+    private static final int MAX_LOGIN_RESPONSE = 64 * 1024;
+    private static final long LOGIN_CHECK_INTERVAL = 1500;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService storeIo = Executors.newSingleThreadExecutor();
     private Dialog dialog;
     private WebView loginView;
     private String loginCookieSignature;
+    private long loginGeneration;
+    private long lastLoginCheck;
+    private boolean loginVerificationPending;
+    private String loginInitialCookies;
+    private String loginOpeningSignature;
+    private Long loginBaselineIdentity;
     private boolean destroyed;
     private final Runnable watchLoginSession = new Runnable() {
         @Override public void run() {
@@ -64,6 +72,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
                 CookieManager.getInstance().flush();
                 notifyListeners("sessionChanged", new JSObject(), true);
             }
+            verifyLoginSession();
             main.postDelayed(this, 1000);
         }
     };
@@ -72,6 +81,106 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         String all = CookieManager.getInstance().getCookie("https://api.bilibili.com/");
         // This fingerprint stays inside Java and is never sent to the local UI, logs, or remote sites.
         return NativePolicy.authenticationSignature(all);
+    }
+
+    /** Cookie changes only prompt a check; successful official nav is the login authority. */
+    private void verifyLoginSession() {
+        if (destroyed || loginView == null || dialog == null || !dialog.isShowing() || loginVerificationPending) return;
+        String currentCookies = CookieManager.getInstance().getCookie("https://api.bilibili.com/");
+        String currentSignature = NativePolicy.authenticationSignature(currentCookies);
+        // Wait for an identity change instead of polling an anonymous or already verified account.
+        if (currentSignature.equals(loginOpeningSignature) && (currentSignature.isEmpty() || loginBaselineIdentity != null && loginBaselineIdentity > 0)) return;
+        // An old challenged session must not block verification of a newly established session.
+        final boolean baseline = loginBaselineIdentity == null && currentSignature.equals(loginOpeningSignature);
+        String cookies = baseline ? loginInitialCookies : currentCookies;
+        String signature = NativePolicy.authenticationSignature(cookies);
+        if (SystemClock.elapsedRealtime() - lastLoginCheck < LOGIN_CHECK_INTERVAL) return;
+        final WebView expectedView = loginView;
+        final Dialog expectedDialog = dialog;
+        final long generation = loginGeneration;
+        lastLoginCheck = SystemClock.elapsedRealtime();
+        loginVerificationPending = true;
+        io.execute(() -> {
+            Long identity = null;
+            HttpURLConnection connection = null;
+            try {
+                URI uri = NativePolicy.requestUri("https://api.bilibili.com/x/web-interface/nav");
+                connection = (HttpURLConnection) uri.toURL().openConnection();
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("User-Agent", NativePolicy.DESKTOP_UA);
+                connection.setRequestProperty("Referer", "https://www.bilibili.com/");
+                connection.setRequestProperty("Origin", "https://www.bilibili.com");
+                connection.setRequestProperty("Accept", "application/json");
+                if (cookies != null && !cookies.isEmpty()) connection.setRequestProperty("Cookie", cookies);
+                int status = connection.getResponseCode();
+                if (status == 200) {
+                    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                    long started = SystemClock.elapsedRealtime();
+                    try (InputStream input = connection.getInputStream()) {
+                        byte[] block = new byte[4096]; int length;
+                        while ((length = input.read(block)) != -1) {
+                            if (buffer.size() + length > MAX_LOGIN_RESPONSE || SystemClock.elapsedRealtime() - started > 10000) {
+                                throw new IllegalStateException("LOGIN_RESPONSE_LIMIT");
+                            }
+                            buffer.write(block, 0, length);
+                        }
+                    }
+                    identity = loginIdentityResponse(status, new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+                }
+            } catch (Exception ignored) {
+                // Network errors, challenges and expired sessions keep the official login window open.
+            } finally { if (connection != null) connection.disconnect(); }
+            final Long result = identity;
+            main.post(() -> completeLoginVerification(expectedView, expectedDialog, generation, signature, baseline, result));
+        });
+    }
+
+    /** null means unverified; 0 means an official logged-out result; positive values are validated mids. */
+    private static Long loginIdentityResponse(int status, String body) {
+        if (status != 200) return null;
+        try {
+            JSONObject response = new JSONObject(body);
+            Object code = response.opt("code");
+            if (!(code instanceof Number)) return null;
+            if (((Number) code).doubleValue() == -101) return 0L;
+            JSONObject data = response.optJSONObject("data");
+            if (((Number) code).doubleValue() != 0 || data == null) return null;
+            if (Boolean.FALSE.equals(data.opt("isLogin"))) return 0L;
+            if (!Boolean.TRUE.equals(data.opt("isLogin"))) return null;
+            Object mid = data.opt("mid");
+            Object username = data.opt("uname");
+            if (!(mid instanceof Number) || !(username instanceof String)) return null;
+            double identity = ((Number) mid).doubleValue();
+            String name = ((String) username).replaceAll("<[^>]*>", "").replaceAll("[\\x00-\\x1f\\x7f]", "").trim();
+            return identity > 0 && identity <= 9007199254740991d && identity == Math.floor(identity) && !name.isEmpty() ? ((Number) mid).longValue() : null;
+        } catch (Exception ignored) { return null; }
+    }
+
+    private void completeLoginVerification(WebView expectedView, Dialog expectedDialog, long generation, String signature, boolean baseline, Long identity) {
+        if (destroyed || generation != loginGeneration || loginView != expectedView || dialog != expectedDialog) return;
+        loginVerificationPending = false;
+        if (baseline) {
+            // Establish with the original Cookie snapshot even if the page has already started switching accounts.
+            if (identity != null) {
+                loginBaselineIdentity = identity;
+                loginInitialCookies = null;
+                lastLoginCheck = 0;
+                verifyLoginSession();
+            }
+            return;
+        }
+        // A slow response for an old account or closed window must never dismiss the current login flow.
+        // With an unknown challenged baseline, only a changed session confirmed by nav may finish.
+        boolean unchangedAccount = loginBaselineIdentity == null ? signature.equals(loginOpeningSignature) : identity != null && identity.equals(loginBaselineIdentity);
+        if (identity == null || identity <= 0 || !signature.equals(authenticationCookieSignature()) || !expectedDialog.isShowing()) return;
+        if (unchangedAccount) {
+            if (loginBaselineIdentity != null) loginOpeningSignature = signature;
+            return;
+        }
+        CookieManager.getInstance().flush();
+        expectedDialog.dismiss();
     }
 
     @Override public void load() {
@@ -272,9 +381,16 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         main.post(() -> {
             if (destroyed || getActivity().isFinishing()) { call.reject("页面已关闭。", "PLUGIN_DISPOSED"); return; }
             Dialog surface = newDialog(call); if (surface == null) return;
-            LinearLayout layout = dialogLayout(surface, "Bilibili 官方登录", "登录完成后，点“返回余音”验证账号。请在官方页面登录，余音不保存你的密码。");
+            LinearLayout layout = dialogLayout(surface, "Bilibili 官方登录", "官方账号验证成功后会自动返回余音，也可以点“返回余音”手动验证。余音不保存你的密码。");
             WebView remote = new WebView(getActivity()); loginView = remote;
-            loginCookieSignature = authenticationCookieSignature();
+            loginGeneration++;
+            loginVerificationPending = false; lastLoginCheck = 0;
+            loginInitialCookies = CookieManager.getInstance().getCookie("https://api.bilibili.com/");
+            loginOpeningSignature = NativePolicy.authenticationSignature(loginInitialCookies);
+            // No local identity means no account to preserve. This never substitutes for current official nav.
+            loginBaselineIdentity = loginOpeningSignature.isEmpty() ? 0L : null;
+            if (loginBaselineIdentity != null) loginInitialCookies = null;
+            loginCookieSignature = loginOpeningSignature;
             notifyListeners("sessionChanged", new JSObject(), true);
             main.postDelayed(watchLoginSession, 1000);
             remote.getSettings().setJavaScriptEnabled(true); remote.getSettings().setDomStorageEnabled(true);
@@ -288,13 +404,20 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
                 @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     return request.isForMainFrame() && !NativePolicy.officialPage(request.getUrl().toString());
                 }
-                @Override public void onPageFinished(WebView view, String url) { CookieManager.getInstance().flush(); }
+                @Override public void onPageFinished(WebView view, String url) {
+                    CookieManager.getInstance().flush();
+                    if (loginView == view) verifyLoginSession();
+                }
             });
             layout.addView(remote, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
             surface.setOnDismissListener(ignored -> {
                 CookieManager.getInstance().flush(); remote.stopLoading(); remote.destroy();
                 main.removeCallbacks(watchLoginSession);
-                if (loginView == remote) loginView = null; if (dialog == surface) dialog = null;
+                if (loginView == remote) {
+                    loginView = null; loginGeneration++; loginVerificationPending = false;
+                    loginInitialCookies = null; loginOpeningSignature = null; loginBaselineIdentity = null;
+                }
+                if (dialog == surface) dialog = null;
                 if (!destroyed) { notifyListeners("sessionChanged", new JSObject(), true); call.resolve(); }
             });
             showFullscreen(surface, layout);
@@ -312,7 +435,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
             layout.addView(sourceFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
             service.showSource(sourceFrame, getActivity());
             surface.setOnDismissListener(ignored -> {
-                service.hideSource(); CookieManager.getInstance().flush(); if (dialog == surface) dialog = null;
+                service.hideSource(sourceFrame); CookieManager.getInstance().flush(); if (dialog == surface) dialog = null;
                 if (!destroyed) call.resolve();
             });
             showFullscreen(surface, layout);
@@ -322,6 +445,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         main.post(() -> {
             PlaybackService service = PlaybackService.current();
             if (service != null) { service.attachActivity(getActivity()); onStatus(service.status()); }
+            verifyLoginSession();
         });
     }
     @Override protected void handleOnDestroy() {

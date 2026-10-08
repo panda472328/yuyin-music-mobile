@@ -5,7 +5,7 @@ PC 版与手机版使用独立工作目录和独立 Git 仓库，两个仓库可
 | 项目 | 仓库 | 应用标识 | 当前版本 |
 | --- | --- | --- | --- |
 | PC 版 | [yuyin-music](https://github.com/panda472328/yuyin-music) | `com.yuyin.music` | `0.4.9` |
-| Android 版 | [yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile) | `com.yuyin.music.mobile` | `0.1.1` / versionCode `2` |
+| Android 版 | [yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile) | `com.yuyin.music.mobile` | `0.1.2` / versionCode `3` |
 
 GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认当前项目。不把 PC 仓库覆盖成手机版，也不把手机目录放成 PC 仓库中的嵌套工程。共同视觉规范的变更在两个仓库分别修改、验证和提交。
 
@@ -23,7 +23,7 @@ GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认�
 
 ## 版本约定
 
-手机版本从 **0.1.0** 开始，独立于 PC 的版本号；当前为 **0.1.1** / versionCode **2**。`version.json` 为 Android 版本来源；Gradle 从中读取 `versionName`、`versionCode`。用 `node scripts/set-version.mjs 0.1.2 3` 同步更新 `version.json`、`package.json` 和锁文件，Android `versionCode` 每次可安装更新递增。更新记录和产物文件名也须匹配。
+手机版本从 **0.1.0** 开始，独立于 PC 的版本号；当前为 **0.1.2** / versionCode **3**。`version.json` 为 Android 版本来源；Gradle 从中读取 `versionName`、`versionCode`。用 `node scripts/set-version.mjs 0.1.3 4` 同步更新 `version.json`、`package.json` 和锁文件，Android `versionCode` 每次可安装更新递增。更新记录和产物文件名也须匹配。
 
 每次发布记录具体改变、已完成的验证和已知限制。使用能够说明实际改动的提交信息；公开版本标签保留平台标识，例如 `android-v0.1.1`。早期 `mobile-v0.1.0`、`mobile-v0.1.1` 标签作为历史验证记录保留，不移动到开源文档提交。PC 的提交或标签不会自动代表手机版已发布。
 
@@ -36,7 +36,7 @@ GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认�
 3. 更新 `CHANGELOG.md` 和对应版本的验证文档，给发布提交打 `android-v<版本号>` 标签并推送。
 4. 在 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 仅上传一个最终 APK 附件，在发布说明中写出 SHA-256、实际 APK 构建提交、公开源码标签提交、签名证书摘要、系统要求、改动与验证限制；提供仓库中 `LICENSE`、`THIRD_PARTY_NOTICES.md` 和 `licenses/` 的链接。
 
-构建记录中的 `commit` 指向 APK 的实际源码来源。后续仅增加许可证、文档与项目元数据的提交可以作为公开发布标签，但必须明确这个差别，不能把旧包描述成由新业务代码构建。当前 0.1.1 APK 来源为 `0b4a5dde2f7bf018603526a4a3d5c2445968ad2f`，`android-v0.1.1` 对应本轮开源整理，应用版本和已验证二进制保持 0.1.1；整理未修改业务代码或发布签名。
+构建记录中的 `commit` 指向 APK 的实际源码来源。后续仅增加许可证、文档与项目元数据的提交可以作为公开发布标签，但必须明确这个差别，不能把旧包描述成由新业务代码构建。0.1.1 APK 来源为 `0b4a5dde2f7bf018603526a4a3d5c2445968ad2f`，`android-v0.1.1` 对应开源整理；0.1.2 是修复登录和后台播放后的新构建，沿用原签名，具体来源以该版本构建记录及发布说明为准。
 
 本地安装包使用 `Yuyin-Mobile-<版本号>.apk` 及对应 `.apk.sha256` 和 `.release.json`。`artifacts/release.json` 仅表示本机最近一次构建；校验文件、构建记录和本地整理清单保留在 `artifacts/`。发布页的手动上传附件只保留该版本最终 APK，许可文本保留在源码仓库。已发布标签和安装包保留用于追溯，不覆盖为另一个版本的内容。
 
@@ -50,6 +50,6 @@ Android 音乐库和偏好设置位于该应用的私有存储中，WebView 登�
 
 Windows 中文工作目录通过用户数据目录 `YuyinMobile/workspace` 的目录联接参与 Gradle 构建，实际文件仍保存在手机版目录，不复制或移动源码。这样避免 JDK 的参数文件编码问题。工具链及缓存保存在独立的 `YuyinMobile/toolchain`，不进入手机或 PC 仓库。开发者配置自己的 JDK / SDK，不需要历史验证机器的绝对路径。
 
-APK 构建、签名和设备安装的具体结果按版本记录：[0.1.1](QA-0.1.1.md)、[0.1.0](QA.md)，只记录实际执行过的项目。每份 APK 同时保留对应的 `.sha256` 与 `.release.json`；`artifacts/release.json` 为最近一次构建记录。
+APK 构建、签名和设备安装的具体结果按版本记录：[0.1.2](QA-0.1.2.md)、[0.1.1](QA-0.1.1.md)、[0.1.0](QA.md)，只记录实际执行过的项目。每份 APK 同时保留对应的 `.sha256` 与 `.release.json`；`artifacts/release.json` 为最近一次构建记录。
 
 历史记录中的路径、机器和临时证据保持原意，不充当新一轮验证结果。

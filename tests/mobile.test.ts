@@ -82,6 +82,19 @@ test('session change rejects an in-flight search and listener cleanup removes br
   assert.equal(h.events.has('sessionChanged'), false)
 })
 
+test('returning from login invalidates old checks and play permits without a native session event', async () => {
+  let signedIn = true
+  const h = harness(() => signedIn ? nav : { code: -101, data: { isLogin: false } })
+  await h.api.checkAccount()
+  h.native.openLogin = async () => { signedIn = false }
+  await h.api.login()
+  await assert.rejects(h.api.play(song), /登录/)
+  assert.equal(h.plays(), 0)
+  h.native.openLogin = async () => { signedIn = true }
+  await h.api.login()
+  assert.equal((await h.api.checkAccount()).loggedIn, true)
+})
+
 test('favorites, playlists, queue, history and manual-play preferences survive an acknowledged store round trip', async () => {
   const h = harness()
   let state = await h.api.loadLibrary()

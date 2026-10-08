@@ -5,12 +5,27 @@ import org.json.JSONObject;
 /** Reads the original site's HTML5 media; no stream URL extraction and no JavascriptInterface. */
 final class MediaScript {
     private MediaScript() { }
+    private static String documentCheck() {
+        return "const path='/video/'+a.bvid;if(location.protocol!=='https:'||location.hostname!=='www.bilibili.com'||" +
+                "(location.pathname!==path&&location.pathname!==path+'/')||new URLSearchParams(location.search).getAll('p').some(function(p){return p!=='1';}))";
+    }
+    private static String visibilityGuard() {
+        return "if(!window.__yuyinSourceVisibility){window.__yuyinSourceVisibility=true;" +
+                // Original page scripts may pause on visibilitychange even though a native playback
+                // service is active. This stays inside the expected source document, without a bridge.
+                "['hidden','webkitHidden'].forEach(function(k){try{Object.defineProperty(document,k,{configurable:true,get:function(){return false;}});}catch(e){}});" +
+                "['visibilityState','webkitVisibilityState'].forEach(function(k){try{Object.defineProperty(document,k,{configurable:true,get:function(){return 'visible';}});}catch(e){}});" +
+                "['visibilitychange','webkitvisibilitychange'].forEach(function(k){window.addEventListener(k,function(e){e.stopImmediatePropagation();},true);});}";
+    }
+    static String backgroundGuard(String bvid) {
+        return "(function(){const a={bvid:" + JSONObject.quote(bvid) + "};" + documentCheck() + "return;" + visibilityGuard() + "})()";
+    }
     static String build(String command, String bvid, double volume, double value) {
         String args = "{command:" + JSONObject.quote(command) + ",bvid:" + JSONObject.quote(bvid) +
                 ",volume:" + volume + ",value:" + value + "}";
         return "(function(){const a=" + args + ";" +
                 "const empty={found:false,paused:true,ended:false,currentTime:0,duration:0,readyState:0,playing:false,mediaError:0};" +
-                "const path='/video/'+a.bvid;if((location.pathname!==path&&location.pathname!==path+'/')||new URLSearchParams(location.search).getAll('p').some(function(p){return p!=='1';}))return JSON.stringify(Object.assign(empty,{navigationMismatch:true}));" +
+                documentCheck() + "return JSON.stringify(Object.assign(empty,{navigationMismatch:true}));" + visibilityGuard() +
                 "const key='__yuyinNativeMedia';const m=window[key]||(window[key]={video:null,ended:false,error:0,volume:a.volume,playing:false,lastTime:0});" +
                 "if(!m.captureInstalled){window.addEventListener('ended',function(e){if(e.target!==m.video)return;m.ended=true;m.playing=false;m.video.pause();m.video.muted=true;e.stopImmediatePropagation();},true);m.captureInstalled=true;}" +
                 "const v=document.querySelector('.bpx-player-video-wrap video')||document.querySelector('.bilibili-player-video video')||document.querySelector('video');" +

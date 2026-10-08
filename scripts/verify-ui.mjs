@@ -20,7 +20,7 @@ window.__mobileQA={playCalls:0,seekCalls:[],saveCalls:0,failSave:false,advance:(
 const listener=(set,callback)=>{set.add(callback);return Promise.resolve({remove:async()=>set.delete(callback)})};
 export const mobile={
 checkAccount:async()=>localStorage.getItem('qa-mobile-login')==='1'?{loggedIn:true,account:{mid:1234,username:'测试用户',avatar:''}}:{loggedIn:false,account:null},
-login:async()=>{localStorage.setItem('qa-mobile-login','1');for(const cb of sessionListeners)cb()},openSource:async()=>{},
+login:async()=>{localStorage.setItem('qa-mobile-login','1')},openSource:async()=>{},
 search:async(query,page=1)=>({query,songs:[song,other],page,pageSize:20,total:2,hasMore:false}),
 play:async(selected)=>{window.__mobileQA.playCalls++;status={...status,state:'playing',song:selected,currentTime:0,duration:selected.duration};emit();return {...status}},
 pause:async()=>{status.state='paused';emit();return {...status}},resume:async()=>{status.state='playing';emit();return {...status}},
@@ -51,8 +51,11 @@ try {
     await page.getByRole('heading', { name: '登录，开始听见喜欢' }).waitFor()
     await page.screenshot({ path: path.join(output, '01-login.png'), fullPage: true })
   })
-  await page.getByRole('button', { name: '登录 Bilibili', exact: true }).click()
-  await page.getByRole('heading', { name: '发现音乐', exact: true }).waitFor()
+  await check('login dismissal refreshes identity and removes the gate even without a session event', async () => {
+    await page.getByRole('button', { name: '登录 Bilibili', exact: true }).click()
+    await page.getByRole('heading', { name: '发现音乐', exact: true }).waitFor()
+    await assert(await page.getByRole('heading', { name: '登录，开始听见喜欢' }).count() === 0, 'Successful login left the gate open')
+  })
   await page.screenshot({ path: path.join(output, '02-search-home.png'), fullPage: true })
   await check('search is explicit and never autoplays', async () => {
     await page.getByRole('textbox', { name: '搜索歌曲或歌手' }).fill('测试歌曲 A')

@@ -43,6 +43,10 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
   const pendingLyrics = new Map<string, Promise<LyricsLookupResult>>()
   let sessionGeneration = 0
 
+  function invalidateSession(): void {
+    account.invalidate(); sessionGeneration++; cache.clear(); pendingLyrics.clear()
+  }
+
   async function json(url: string): Promise<unknown> {
     const response = await native.request({ url })
     if (response.status < 200 || response.status >= 300) {
@@ -113,7 +117,12 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
 
   return {
     checkAccount: () => android ? account.getStatus() : Promise.resolve({ loggedIn: false as const, account: null }),
-    login: () => native.openLogin(), openSource: () => native.openSource(),
+    async login() {
+      invalidateSession()
+      try { await native.openLogin() }
+      finally { invalidateSession() }
+    },
+    openSource: () => native.openSource(),
     async search(query: string, page = 1) {
       const keyword = query.trim()
       if (!keyword || keyword.length > 200) throw new Error('请输入 1 到 200 个字符的歌名或歌手。')
@@ -162,7 +171,7 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
     addStatusListener: (callback: (status: PlaybackStatus) => void) => native.addListener('status', callback),
     addEndedListener: (callback: (song: Song) => void) => native.addListener('ended', event => callback(event.song)),
     addSessionListener: (callback: () => void) => native.addListener('sessionChanged', () => {
-      account.invalidate(); sessionGeneration++; cache.clear(); pendingLyrics.clear(); callback()
+      invalidateSession(); callback()
     }),
     async getFavoriteFolders(): Promise<BilibiliFavoriteFoldersResult> {
       const permit = await account.requireLoggedIn()

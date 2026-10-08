@@ -5,14 +5,20 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Presentation;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
@@ -22,6 +28,8 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.view.ViewGroup;
+import android.view.View;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -59,6 +67,9 @@ public final class PlaybackService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private WebView source;
     private FrameLayout holder;
+    private Presentation backgroundPresentation;
+    private VirtualDisplay backgroundDisplay;
+    private ImageReader backgroundFrames;
     private WeakReference<Activity> attachedActivity = new WeakReference<>(null);
     private FrameLayout visibleSource;
     private AudioManager audioManager;
@@ -75,6 +86,7 @@ public final class PlaybackService extends Service {
     private long generation;
     private long positionRevision;
     private boolean desiredPlayback;
+    private boolean focusPreflightComplete;
     private boolean startAttempted;
     private boolean awaitingStart;
     private boolean evaluationPending;
@@ -93,6 +105,17 @@ public final class PlaybackService extends Service {
     private Completion playCompletion;
     private String previousPublished = "";
     private String previousNotificationState = "";
+
+    /** Only the service-owned source stays visible to Chromium; the Capacitor UI follows its Activity. */
+    private static final class SourceWebView extends WebView {
+        SourceWebView(Context context) { super(context); }
+        @Override protected void onWindowVisibilityChanged(int visibility) {
+            // A foreground service and wake lock do not prevent WebView's hidden-window media policy.
+            // Keep this source's renderer alive when Home / screen-off hides the Activity window.
+            // Media pause and Android audio focus still operate on the actual HTML5 element.
+            super.onWindowVisibilityChanged(View.VISIBLE);
+        }
+    }
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (destroyed) return;
@@ -135,6 +158,7 @@ public final class PlaybackService extends Service {
         // Required immediately after startForegroundService, including while the original page loads.
         startForeground(NOTIFICATION, notification());
         foreground = true;
+        createBackgroundHost();
         createSource();
         main.post(poll);
     }
@@ -150,9 +174,61 @@ public final class PlaybackService extends Service {
     }
     @Override public IBinder onBind(Intent intent) { return null; }
 
+    private boolean createBackgroundHost() {
+        if (backgroundPresentation != null && backgroundPresentation.isShowing() && holder != null) return true;
+        disposeBackgroundHost();
+        try {
+            // A private, app-owned virtual display supplies a real Window without overlay/capture
+            // permissions. Chromium considers a detached WebView hidden even if window visibility
+            // is overridden, so a Service-held Java reference alone cannot keep video media running.
+            final int size = 64;
+            backgroundFrames = ImageReader.newInstance(size, size, PixelFormat.RGBA_8888, 2);
+            backgroundFrames.setOnImageAvailableListener(reader -> {
+                // Consume and discard immediately: never inspect, copy, capture or save media frames.
+                try (Image image = reader.acquireLatestImage()) { /* Release compositor backpressure. */ }
+                catch (IllegalStateException ignored) { /* A queued callback may follow service cleanup. */ }
+            }, main);
+            DisplayManager displays = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+            backgroundDisplay = displays.createVirtualDisplay("YuyinSource", size, size,
+                    getResources().getDisplayMetrics().densityDpi, backgroundFrames.getSurface(),
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION);
+            if (backgroundDisplay == null) throw new IllegalStateException("Private source display unavailable");
+            Presentation presentation = new Presentation(this, backgroundDisplay.getDisplay());
+            backgroundPresentation = presentation;
+            presentation.getWindow().setType(WindowManager.LayoutParams.TYPE_PRIVATE_PRESENTATION);
+            holder = new FrameLayout(presentation.getContext());
+            holder.setImportantForAccessibility(FrameLayout.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            presentation.setContentView(holder);
+            presentation.setOnDismissListener(ignored -> {
+                if (backgroundPresentation != presentation || destroyed) return;
+                disposeBackgroundHost();
+                if (song != null) fail("后台音源窗口已关闭，请重新选择歌曲。", "BACKGROUND_HOST_CLOSED", generation);
+            });
+            presentation.show();
+            return true;
+        } catch (RuntimeException ignored) {
+            disposeBackgroundHost();
+            return false;
+        }
+    }
+
+    private void disposeBackgroundHost() {
+        FrameLayout oldHolder = holder; holder = null;
+        if (source != null && source.getParent() == oldHolder) removeParent(source);
+        Presentation oldPresentation = backgroundPresentation; backgroundPresentation = null;
+        VirtualDisplay oldDisplay = backgroundDisplay; backgroundDisplay = null;
+        ImageReader oldFrames = backgroundFrames; backgroundFrames = null;
+        if (oldPresentation != null) {
+            try { oldPresentation.dismiss(); } catch (RuntimeException ignored) { /* Already removed display. */ }
+        }
+        if (oldDisplay != null) oldDisplay.release();
+        if (oldFrames != null) { oldFrames.setOnImageAvailableListener(null, null); oldFrames.close(); }
+    }
+
     @SuppressWarnings("SetJavaScriptEnabled")
     private void createSource() {
-        source = new WebView(this);
+        focusPreflightComplete = false;
+        source = new SourceWebView(this);
         source.setBackgroundColor(Color.BLACK);
         source.getSettings().setJavaScriptEnabled(true);
         source.getSettings().setDomStorageEnabled(true);
@@ -162,6 +238,7 @@ public final class PlaybackService extends Service {
         source.getSettings().setAllowContentAccess(false);
         source.getSettings().setSupportMultipleWindows(false);
         source.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        if (Build.VERSION.SDK_INT >= 26) source.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(source, false);
         source.setWebViewClient(new WebViewClient() {
@@ -175,6 +252,7 @@ public final class PlaybackService extends Service {
             @Override public void onPageFinished(WebView view, String url) {
                 if (song == null || !NativePolicy.expectedVideo(url, song.optString("bvid"))) return;
                 CookieManager.getInstance().flush();
+                view.evaluateJavascript(MediaScript.backgroundGuard(song.optString("bvid")), null);
                 if (!desiredPlayback) read("pause", 0, null);
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError failure) {
@@ -187,6 +265,8 @@ public final class PlaybackService extends Service {
                 removeParent(view);
                 view.destroy();
                 source = null;
+                disposeBackgroundHost();
+                createBackgroundHost();
                 createSource();
                 if (visibleSource != null) attachTo(visibleSource);
                 else if (holder != null) attachTo(holder);
@@ -194,26 +274,21 @@ public final class PlaybackService extends Service {
             }
         });
         // Never addJavascriptInterface: all remote content stays outside the privileged app bridge.
+        if (holder != null && visibleSource == null) attachTo(holder);
     }
 
     void attachActivity(Activity activity) {
         if (activity == null || activity.isFinishing() || destroyed) return;
-        if (attachedActivity.get() == activity && holder != null) return;
-        if (holder != null) removeParent(holder);
         attachedActivity = new WeakReference<>(activity);
-        holder = new FrameLayout(this);
-        holder.setAlpha(0.01f);
-        holder.setImportantForAccessibility(FrameLayout.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(2, 2);
-        ((ViewGroup) activity.getWindow().getDecorView()).addView(holder, params);
-        if (visibleSource == null) attachTo(holder);
+        if (visibleSource == null && createBackgroundHost() && source != null && source.getParent() != holder) attachTo(holder);
     }
 
     void detachActivity(Activity activity) {
         if (attachedActivity.get() != activity) return;
-        if (source != null && visibleSource == null) removeParent(source);
-        if (holder != null) removeParent(holder);
-        holder = null;
+        // Move out of a source dialog as well: its async dismiss must not retain a dead Activity.
+        visibleSource = null;
+        if (source != null && holder != null && source.getParent() != holder) attachTo(holder);
+        else if (source != null && holder == null) removeParent(source);
         attachedActivity = new WeakReference<>(null);
     }
 
@@ -224,10 +299,18 @@ public final class PlaybackService extends Service {
     }
     void hideSource() {
         visibleSource = null;
-        if (holder != null) attachTo(holder);
+        if (createBackgroundHost()) attachTo(holder);
+        else {
+            if (source != null) removeParent(source);
+            if (song != null) fail("手机未能保留后台音源窗口，请重新选择歌曲。", "BACKGROUND_HOST_UNAVAILABLE", generation);
+        }
+    }
+    void hideSource(FrameLayout expectedContainer) {
+        // Dismiss runs asynchronously. An old Activity's dialog cannot hide a newer source window.
+        if (visibleSource == expectedContainer) hideSource();
     }
     private void attachTo(FrameLayout target) {
-        if (source == null) return;
+        if (source == null || target == null || source.getParent() == target) return;
         removeParent(source);
         target.addView(source, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -264,9 +347,14 @@ public final class PlaybackService extends Service {
         playbackSessionSignature = NativePolicy.authenticationSignature(CookieManager.getInstance().getCookie("https://api.bilibili.com/"));
         state = "loading"; error = null; errorCode = null; currentTime = 0;
         duration = Math.max(0, selected.optDouble("duration", 0));
-        desiredPlayback = true; startAttempted = false; awaitingStart = true; stalledSince = 0;
+        desiredPlayback = true; focusPreflightComplete = false; startAttempted = false; awaitingStart = true; stalledSince = 0;
         loadStarted = SystemClock.elapsedRealtime();
         playCompletion = completion;
+        if (!createBackgroundHost()) {
+            fail("手机未能创建后台音源窗口，请返回前台重试。", "BACKGROUND_HOST_UNAVAILABLE", generation);
+            return;
+        }
+        if (visibleSource == null && source.getParent() != holder) attachTo(holder);
         source.loadUrl("https://www.bilibili.com/video/" + selected.optString("bvid") + "/");
         publish(true);
     }
@@ -394,10 +482,17 @@ public final class PlaybackService extends Service {
             publish(false); return;
         }
         if (!startAttempted && snapshot.optInt("readyState") > 0) {
-            if (!requestFocus()) { fail("其他应用正在使用音频，请稍后重试。", "AUDIO_FOCUS_DENIED", expectedGeneration); return; }
-            // Chromium requests its own Android audio focus when HTML5 media plays. Keeping a second
-            // native request makes that legitimate handoff look like a competing app and pauses us.
-            releaseResources();
+            if (!focusPreflightComplete) {
+                // Only preflight the first start of this selected document. On pause Chromium may
+                // retain focus temporarily; requesting native focus again on resume steals that focus
+                // and queues a delayed LOSS which can pause the just-resumed HTML5 element.
+                // A page which already auto-started owns Chromium focus and needs no second owner.
+                if (snapshot.optBoolean("paused") && !requestFocus()) {
+                    fail("其他应用正在使用音频，请稍后重试。", "AUDIO_FOCUS_DENIED", expectedGeneration); return;
+                }
+                releaseResources();
+                focusPreflightComplete = true;
+            }
             startAttempted = true;
             read("play", 0, null);
             return;
@@ -537,7 +632,9 @@ public final class PlaybackService extends Service {
         rejectPending("播放服务已关闭。", "PLAYER_DISPOSED");
         releaseResources();
         if (source != null) { removeParent(source); source.stopLoading(); source.destroy(); source = null; }
-        if (holder != null) removeParent(holder);
+        disposeBackgroundHost();
+        visibleSource = null;
+        attachedActivity = new WeakReference<>(null);
         if (mediaSession != null) { mediaSession.setActive(false); mediaSession.release(); }
         if (instance == this) instance = null;
         state = "idle"; song = null; error = null; errorCode = null; currentTime = 0; duration = 0;

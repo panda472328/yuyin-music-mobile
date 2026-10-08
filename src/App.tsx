@@ -8,6 +8,7 @@ import type { LyricsLookupResult, LyricsProvider } from './lyric-types'
 import { addToPlaylist, createPlaylist, deletePlaylist, getNextIndex, importBilibiliPlaylist,
   recordHistory, removeFromPlaylist, renamePlaylist, toggleFavorite, type LibraryState } from './domain/library'
 import { activeLyricIndex, parseLrc } from './domain/lyrics'
+import { AccountGateController } from './domain/account-gate'
 import { mobile, isAndroid, getLyricOffset } from './native/api'
 import type { MobilePreferences } from './native/contract'
 import packageInfo from '../package.json'
@@ -67,6 +68,7 @@ export default function App() {
   const [accountChecking, setAccountChecking] = useState(true)
   const [accountError, setAccountError] = useState<string | null>(null)
   const [accountMenu, setAccountMenu] = useState(false)
+  const accountController = useRef<AccountGateController | null>(null)
   const [status, setStatus] = useState<PlaybackStatus>(idle)
   const statusRef = useRef(status)
   const requestedSong = useRef<string | null>(null)
@@ -142,13 +144,7 @@ export default function App() {
     return operation
   }, [])
 
-  const checkAccount = useCallback(async () => {
-    setAccountChecking(true)
-    setAccountError(null)
-    try { setAccount(await mobile.checkAccount()) }
-    catch (failure) { setAccountError(message(failure)) }
-    finally { setAccountChecking(false) }
-  }, [])
+  const checkAccount = useCallback(() => accountController.current?.refresh() ?? Promise.resolve(), [])
 
   const loadStores = useCallback(async () => {
     setBooting(true)
@@ -183,9 +179,16 @@ export default function App() {
   }, [mutateLibrary])
 
   useEffect(() => {
-    void loadStores()
-    void checkAccount()
     let stopped = false
+    const gate = new AccountGateController(() => mobile.checkAccount(), next => {
+      if (stopped) return
+      setAccount(next.status)
+      setAccountChecking(next.checking)
+      setAccountError(next.error)
+    })
+    accountController.current = gate
+    void loadStores()
+    void gate.refresh()
     const handles = [
       mobile.addStatusListener(next => { if (!stopped) receiveStatus(next) }),
       mobile.addEndedListener(song => {
@@ -210,6 +213,8 @@ export default function App() {
     document.addEventListener('visibilitychange', refresh)
     return () => {
       stopped = true
+      gate.dispose()
+      if (accountController.current === gate) accountController.current = null
       document.removeEventListener('visibilitychange', refresh)
       for (const pending of handles) void pending.then(handle => handle.remove()).catch(() => {})
     }
@@ -406,7 +411,7 @@ export default function App() {
   const rows = (songs: Song[], playlistId?: string) => songs.map((song, index) => <SongRow key={song.bvid} song={song}
     favorite={favorites.has(song.bvid)} active={current?.bvid === song.bvid} index={tab !== 'search' ? index : undefined}
     onPlay={() => playSong(song, songs)} onFavorite={() => favoriteSong(song)} onMore={() => setDialog({ type: 'song', song, playlistId })} />)
-  const login = () => void run(() => mobile.login())
+  const login = () => void run(async () => { await mobile.login(); await checkAccount() })
   const canUse = !booting && library !== null && preferences !== null
 
   return <div className={`app ${current ? 'has-player' : ''} ${!isAndroid ? 'preview-mode' : ''} ${error || loadError ? 'has-alert' : ''}`}>

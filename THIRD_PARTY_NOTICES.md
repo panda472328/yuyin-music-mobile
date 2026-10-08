@@ -4,7 +4,7 @@
 
 ## Android 应用运行时
 
-以下是 Android 0.1.1 的主要运行时组件。JavaScript 版本以 `package-lock.json` 为准；Android 直接依赖版本见 `android/variables.gradle`，其传递依赖由 Gradle 解析。
+以下是 Android 0.1.2 的主要运行时组件，与 0.1.1 的依赖版本相同。JavaScript 版本以 `package-lock.json` 为准；Android 直接依赖版本见 `android/variables.gradle`，其传递依赖由 Gradle 解析。
 
 | 组件 | 版本或范围 | 许可与原始文本 | 上游项目 |
 | --- | --- | --- | --- |

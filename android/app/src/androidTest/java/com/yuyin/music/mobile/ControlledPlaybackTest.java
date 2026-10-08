@@ -2,17 +2,22 @@ package com.yuyin.music.mobile;
 
 import android.app.Instrumentation;
 import android.app.NotificationManager;
+import android.app.Presentation;
 import android.content.Context;
 import android.content.Intent;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.media.AudioManager;
+import android.media.ImageReader;
+import android.hardware.display.VirtualDisplay;
 import android.os.ParcelFileDescriptor;
 import android.os.Build;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.Base64;
 import android.view.ViewGroup;
+import android.view.Display;
+import android.view.Surface;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -24,14 +29,17 @@ import androidx.core.content.ContextCompat;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.lifecycle.Lifecycle;
 import com.getcapacitor.JSObject;
 import org.json.JSONObject;
 import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -39,6 +47,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import static org.junit.Assert.*;
@@ -89,10 +98,23 @@ public class ControlledPlaybackTest {
         wav.putInt(16).putShort((short) 1).putShort((short) 1).putInt(sampleRate).putInt(sampleRate * 2).putShort((short) 2).putShort((short) 16);
         wav.put("data".getBytes(StandardCharsets.US_ASCII)).putInt(bytes);
         for (int i = 0; i < count; i++) wav.putShort((short) (Math.sin(i * 2 * Math.PI * 220 / sampleRate) * 1200));
+        return mediaHtmlWithData("data:audio/wav;base64," + Base64.encodeToString(wav.array(), Base64.NO_WRAP));
+    }
+    private String muxedMediaHtml() throws Exception {
+        try (InputStream input = instrumentation.getContext().getAssets().open("controlled-video-with-audio.mp4");
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            byte[] block = new byte[8192]; int length;
+            while ((length = input.read(block)) != -1) bytes.write(block, 0, length);
+            return mediaHtmlWithData("data:video/mp4;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP));
+        }
+    }
+    private static String mediaHtmlWithData(String data) {
         return "<!doctype html><html><head><meta name='viewport' content='width=device-width'></head><body>" +
-                "<video controls playsinline preload='auto' style='width:100%;height:100%' src='data:audio/wav;base64," +
-                Base64.encodeToString(wav.array(), Base64.NO_WRAP) + "'></video>" +
-                "<script>window.qaAutoNext=false;document.querySelector('video').addEventListener('ended',function(){window.qaAutoNext=true;this.currentTime=0;this.play();});</script></body></html>";
+                "<video controls playsinline preload='auto' style='width:100%;height:100%' src='" + data + "'></video>" +
+                "<script>window.qaAutoNext=false;window.qaLifecyclePauseCount=0;" +
+                "document.addEventListener('visibilitychange',function(){if(document.hidden){window.qaLifecyclePauseCount++;document.querySelector('video').pause();}});" +
+                "window.addEventListener('pagehide',function(){if(document.hidden){window.qaLifecyclePauseCount++;document.querySelector('video').pause();}});" +
+                "document.querySelector('video').addEventListener('ended',function(){window.qaAutoNext=true;this.currentTime=0;this.play();});</script></body></html>";
     }
     private void localPlay(JSObject selected, String html, Pending result) {
         onMain(() -> {
@@ -107,6 +129,20 @@ public class ControlledPlaybackTest {
         }
     }
     private boolean wakeHeld() throws Exception { return ((PowerManager.WakeLock) field("wakeLock")).isHeld(); }
+    private String evaluate(String script) throws Exception {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        onMain(() -> source.evaluateJavascript(script, result::complete));
+        return result.get(4, TimeUnit.SECONDS);
+    }
+    private void complete(Pending pending, int seconds, String operation) throws Exception {
+        try { pending.result.get(seconds, TimeUnit.SECONDS); }
+        catch (TimeoutException timeout) {
+            String media = evaluate("JSON.stringify((function(){const v=document.querySelector('video');const m=window.__yuyinNativeMedia;return {found:!!v,sourceKind:v?(v.currentSrc.indexOf('data:video/mp4')===0?'controlled-mp4':v.currentSrc.indexOf('data:audio/wav')===0?'controlled-wav':'other'):null,paused:v?v.paused:null,ended:v?v.ended:null,currentTime:v?v.currentTime:null,duration:v?v.duration:null,readyState:v?v.readyState:null,networkState:v?v.networkState:null,seeking:v?v.seeking:null,videoWidth:v?v.videoWidth:null,videoHeight:v?v.videoHeight:null,mediaError:v&&v.error?v.error.code:null,playError:m?m.playError:null,documentHidden:document.hidden,visibilityState:document.visibilityState};})())");
+            throw new AssertionError(operation + " timed out: service=" + snapshot() + " media=" + media +
+                    " desiredPlayback=" + field("desiredPlayback") + " startAttempted=" + field("startAttempted") +
+                    " awaitingStart=" + field("awaitingStart") + " focusPreflightComplete=" + field("focusPreflightComplete"), timeout);
+        }
+    }
 
     @Test public void html5PlaybackSurvivesReparentBackgroundAndScreenOffWithoutWritingUserLibrary() throws Exception {
         Assume.assumeTrue("Explicit isolated emulator opt-in required", "true".equals(InstrumentationRegistry.getArguments().getString("yuyinControlledEmulator")));
@@ -117,7 +153,7 @@ public class ControlledPlaybackTest {
         Assume.assumeTrue("Never replace an existing playback service", PlaybackService.current() == null);
         String libraryBefore = context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("library", null);
         String preferencesBefore = context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("preferences", null);
-        String longMedia = mediaHtml(90);
+        String longMedia = muxedMediaHtml();
         try (ActivityScenario<QaPlaybackActivity> scenario = ActivityScenario.launch(QaPlaybackActivity.class)) {
             ContextCompat.startForegroundService(context, new Intent(context, PlaybackService.class));
             await(() -> {
@@ -151,7 +187,7 @@ public class ControlledPlaybackTest {
             });
             try { interrupted.result.get(2, TimeUnit.SECONDS); fail("Old play request must be rejected"); }
             catch (ExecutionException expected) { assertEquals("PLAYBACK_INTERRUPTED", expected.getCause().getMessage()); }
-            started.result.get(20, TimeUnit.SECONDS);
+            complete(started, 20, "Initial controlled MP4 play");
             await(() -> snapshot().optDouble("currentTime") > 0.5 && snapshot().optString("state").equals("playing"), 10000, "Real HTML5 time did not advance");
             assertEquals("BV1ab411c7XZ", snapshot().optJSONObject("song").optString("bvid"));
             assertTrue(wakeHeld());
@@ -161,15 +197,23 @@ public class ControlledPlaybackTest {
             onMain(() -> source.evaluateJavascript("typeof window.Capacitor==='undefined'&&typeof window.androidBridge==='undefined'", bridge::complete));
             assertEquals("true", bridge.get(3, TimeUnit.SECONDS));
             evidence.put("generationProtection", true); evidence.put("nativeBridgeAbsent", true);
+            assertEquals(Boolean.TRUE, field("focusPreflightComplete"));
+            assertEquals("true", evaluate("document.querySelector('video').videoWidth>0&&document.querySelector('video').videoHeight>0"));
+            evidence.put("realVideoTrackPresent", true);
+            VirtualDisplay privateDisplay = (VirtualDisplay) field("backgroundDisplay");
+            assertNotNull(privateDisplay);
+            assertTrue("Background source display must stay private", (privateDisplay.getDisplay().getFlags() & Display.FLAG_PRIVATE) != 0);
+            evidence.put("privateServiceSourceDisplay", true);
 
-            Pending seek = new Pending(); onMain(() -> service.seek(10, seek)); seek.result.get(5, TimeUnit.SECONDS);
+            Pending seek = new Pending(); onMain(() -> service.seek(10, seek)); complete(seek, 5, "Seek controlled MP4 to 10s");
             await(() -> snapshot().optDouble("currentTime") >= 10, 4000, "Seek did not use actual media position");
             Pending pause = new Pending(); onMain(() -> service.pause(pause)); pause.result.get(3, TimeUnit.SECONDS);
             SystemClock.sleep(350); double pausedAt = snapshot().optDouble("currentTime");
             assertFalse(wakeHeld()); SystemClock.sleep(1000);
             assertEquals("paused", snapshot().optString("state"));
             assertEquals(pausedAt, snapshot().optDouble("currentTime"), 0.15);
-            Pending resume = new Pending(); onMain(() -> service.resume(resume)); resume.result.get(10, TimeUnit.SECONDS);
+            Pending resume = new Pending(); onMain(() -> service.resume(resume)); complete(resume, 10, "Resume controlled MP4 after user pause");
+            assertEquals("Same-document resume must not reacquire native audio focus", Boolean.FALSE, field("focusRegistered"));
             await(() -> snapshot().optDouble("currentTime") > pausedAt + 0.4, 4000, "Resume did not advance media");
             evidence.put("pauseResumeSeek", true);
 
@@ -184,16 +228,45 @@ public class ControlledPlaybackTest {
             evidence.put("transientAudioFocusResume", true);
 
             double beforeSource = snapshot().optDouble("currentTime");
+            AtomicReference<FrameLayout> oldSourceFrame = new AtomicReference<>();
             scenario.onActivity(activity -> {
                 FrameLayout visible = new FrameLayout(activity);
+                oldSourceFrame.set(visible);
                 activity.root.addView(visible, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600));
                 service.showSource(visible, activity);
             });
             SystemClock.sleep(1300);
-            onMain(service::hideSource);
+            scenario.onActivity(activity -> {
+                FrameLayout next = new FrameLayout(activity);
+                activity.root.addView(next, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600));
+                service.showSource(next, activity);
+                service.hideSource(oldSourceFrame.get());
+                assertSame("Stale dialog dismiss cannot detach the new source window", next, source.getParent());
+                service.hideSource(next);
+            });
             assertSame(source, field("source"));
             assertTrue(snapshot().optDouble("currentTime") > beforeSource + 0.6);
             evidence.put("sourceReparentKeepsMedia", true);
+
+            // A site may pause while hidden independently from Android audio focus. Exercise its
+            // lifecycle handlers; visible source getters must prevent that policy without resuming pauses.
+            double beforeLifecycleEvent = snapshot().optDouble("currentTime");
+            assertEquals("0", evaluate("document.dispatchEvent(new Event('visibilitychange',{bubbles:true}));window.dispatchEvent(new Event('pagehide'));window.qaLifecyclePauseCount"));
+            SystemClock.sleep(1000);
+            assertEquals("playing", snapshot().optString("state"));
+            assertTrue(snapshot().optDouble("currentTime") > beforeLifecycleEvent + 0.4);
+            evidence.put("siteVisibilityAndPagehideDoNotPause", true);
+
+            // A pause from the source controls is still a real user pause, never an automatic retry.
+            evaluate("document.querySelector('video').pause()");
+            await(() -> snapshot().optString("state").equals("paused"), 5000, "Source user pause was ignored");
+            double sourcePausedAt = snapshot().optDouble("currentTime");
+            SystemClock.sleep(1200);
+            assertEquals("paused", snapshot().optString("state"));
+            assertEquals(sourcePausedAt, snapshot().optDouble("currentTime"), 0.15);
+            assertFalse(wakeHeld());
+            Pending sourceResume = new Pending(); onMain(() -> service.resume(sourceResume)); complete(sourceResume, 10, "Resume controlled MP4 after source pause");
+            evidence.put("sourceUserPausePreserved", true);
 
             double beforeBackground = snapshot().optDouble("currentTime");
             assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME));
@@ -202,6 +275,31 @@ public class ControlledPlaybackTest {
             double backgroundDelta = snapshot().optDouble("currentTime") - beforeBackground;
             assertTrue("Background media clock must advance", backgroundDelta > 2.0);
             evidence.put("backgroundSecondsAdvanced", backgroundDelta);
+            assertEquals("0", evaluate("window.qaLifecyclePauseCount"));
+
+            MediaSession activeSession = (MediaSession) field("mediaSession");
+            activeSession.getController().getTransportControls().pause();
+            await(() -> snapshot().optString("state").equals("paused"), 5000, "Background MediaSession pause was ignored");
+            double backgroundPausedAt = snapshot().optDouble("currentTime");
+            SystemClock.sleep(1200);
+            assertEquals("paused", snapshot().optString("state"));
+            assertEquals(backgroundPausedAt, snapshot().optDouble("currentTime"), 0.15);
+            assertFalse(wakeHeld());
+            activeSession.getController().getTransportControls().play();
+            await(() -> snapshot().optString("state").equals("playing"), 10000, "Background MediaSession resume did not play");
+            evidence.put("backgroundManualPauseAndResume", true);
+
+            assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, manager.requestAudioFocus(temporaryFocus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT));
+            try {
+                await(() -> snapshot().optString("state").equals("paused"), 5000, "Background external audio focus did not pause");
+                double focusPausedAt = snapshot().optDouble("currentTime");
+                SystemClock.sleep(1200);
+                assertEquals("paused", snapshot().optString("state"));
+                assertEquals(focusPausedAt, snapshot().optDouble("currentTime"), 0.15);
+                assertFalse(wakeHeld());
+            } finally { manager.abandonAudioFocus(temporaryFocus); }
+            await(() -> snapshot().optString("state").equals("playing"), 10000, "Background playback did not resume after focus gain");
+            evidence.put("backgroundFocusPauseAndResume", true);
 
             double beforeLock = snapshot().optDouble("currentTime");
             shell("input keyevent 223");
@@ -214,19 +312,54 @@ public class ControlledPlaybackTest {
             evidence.put("screenOffSecondsAdvanced", lockDelta);
             shell("input keyevent 224"); shell("wm dismiss-keyguard");
 
+            // Home leaves the launcher task in front. Waking the display does not return the app,
+            // and ActivityScenario.moveToState cannot override the OS task/window visibility.
+            // Bring back the SAME QA Activity through normal task navigation before recreating it.
+            onMain(() -> context.startActivity(new Intent(context, QaPlaybackActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP)));
+            await(() -> scenario.getState() == Lifecycle.State.RESUMED, 10000, "QA task did not return to the foreground");
+            assertSame(source, field("source"));
+            assertEquals("playing", snapshot().optString("state"));
+            double beforeRecreate = snapshot().optDouble("currentTime");
+            scenario.recreate();
+            scenario.onActivity(activity -> service.attachActivity(activity));
+            assertSame(source, field("source"));
+            SystemClock.sleep(1500);
+            assertEquals("playing", snapshot().optString("state"));
+            assertTrue(snapshot().optDouble("currentTime") > beforeRecreate + 0.5);
+            evidence.put("capacitorActivityRecreateKeepsSource", true);
+
+            double beforeDestroy = snapshot().optDouble("currentTime");
+            scenario.moveToState(Lifecycle.State.DESTROYED);
+            assertSame(source, field("source"));
+            SystemClock.sleep(3000);
+            assertEquals("playing", snapshot().optString("state"));
+            double destroyedDelta = snapshot().optDouble("currentTime") - beforeDestroy;
+            assertTrue("Destroyed Activity must not stop service media", destroyedDelta > 1.5);
+            assertEquals("true", evaluate("!document.querySelector('video').paused"));
+            evidence.put("activityDestroyedSecondsAdvanced", destroyedDelta);
+
             Pending ending = new Pending(); localPlay(song("BV1ab411c7Xa", "QA ending", 2), mediaHtml(2), ending);
-            ending.result.get(10, TimeUnit.SECONDS);
+            complete(ending, 10, "Play controlled ending WAV after Activity destroy");
             await(() -> snapshot().optString("state").equals("ended"), 10000, "Ended event was not read from real HTML5 media");
             CompletableFuture<String> autoNext = new CompletableFuture<>();
             onMain(() -> source.evaluateJavascript("window.qaAutoNext", autoNext::complete));
             assertEquals("false", autoNext.get(3, TimeUnit.SECONDS));
             assertFalse(wakeHeld()); evidence.put("endedAndWakeReleased", true);
+            Presentation retainedPresentation = (Presentation) field("backgroundPresentation");
+            VirtualDisplay retainedDisplay = (VirtualDisplay) field("backgroundDisplay");
+            Surface retainedSurface = ((ImageReader) field("backgroundFrames")).getSurface();
             onMain(service::stopPlayback);
             await(() -> PlaybackService.current() == null, 4000, "Service did not stop");
+            assertFalse("Stopping releases the service source window", retainedPresentation.isShowing());
+            await(() -> !retainedDisplay.getDisplay().isValid(), 4000, "Stopping did not release the private display");
+            assertFalse("Stopping releases the frame queue surface", retainedSurface.isValid());
+            assertNull(field("backgroundPresentation")); assertNull(field("backgroundDisplay")); assertNull(field("backgroundFrames"));
+            evidence.put("privateHostResourcesReleased", true);
             assertEquals(libraryBefore, context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("library", null));
             assertEquals(preferencesBefore, context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("preferences", null));
             evidence.put("userLibraryAndPreferencesUnchanged", true);
-            evidence.put("scope", "controlled local WAV in real Android WebView; no Bilibili account or real-stream acceptance");
+            evidence.put("scope", "generated H.264 + AAC video and local WAV with site hidden-page pause policy in Android WebView; production MainActivity/Capacitor lifecycle with inert UI; no Bilibili account or real-stream acceptance");
             try (FileOutputStream output = new FileOutputStream(new File(context.getCacheDir(), "qa-controlled-playback-evidence.json"))) {
                 output.write(evidence.toString(2).getBytes(StandardCharsets.UTF_8));
             }
