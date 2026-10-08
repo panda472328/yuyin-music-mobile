@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">余音手机版</string>
+    <string name="title_activity_main">余音手机版</string>
+    <string name="package_name">com.yuyin.music.mobile</string>
+    <string name="custom_url_scheme">com.yuyin.music.mobile</string>
+</resources>
