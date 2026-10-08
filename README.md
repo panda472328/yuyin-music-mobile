@@ -1,8 +1,14 @@
 # 余音手机版
 
-余音的独立 Android 项目，当前版本为 **0.1.1**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。PC 版继续位于 `D:\音乐播放器`，手机版源码、依赖和安装产物位于 `D:\音乐播放器-手机版`，两者分别管理 Git 历史。0.1.1 按 PC 版统一了米白与鼠尾草绿主题、品牌、唱片元素和歌词高亮，保留适合触屏的布局；详见 [界面规范](docs/UI-GUIDE.md)。
+余音的独立 Android 音乐播放器，当前版本为 **0.1.1**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。手机版与 [PC 版](https://github.com/panda472328/yuyin-music) 使用两个独立仓库，各自管理源码、依赖、版本和安装包。0.1.1 按 PC 版统一了米白与鼠尾草绿主题、品牌、唱片元素和歌词高亮，保留适合触屏的布局；详见 [界面规范](docs/UI-GUIDE.md)。
 
 当前 **0.1.1 签名 Release APK** 已完成构建，通过 TypeScript 检查、11 项业务测试、11 项界面检查及 4 项 Android 单元测试；正式包已在 Android 9 模拟器同签名覆盖安装并启动，详见 [0.1.1 验证记录](docs/QA-0.1.1.md)。初版的受控后台播放、3 项原生测试和强制结束后存储恢复结果保留在 [0.1.0 验证记录](docs/QA.md)。真实 Bilibili 登录、实播与后台表现需要在用户手机上验收。
+
+## 下载和安装
+
+从 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 下载 APK，当前公开版本为 [android-v0.1.1](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.1)。安装文件是 `Yuyin-Mobile-0.1.1.apk`；同一发布页提供 SHA-256 校验文件和构建来源记录。应用版本仍为 0.1.1，公开源码标签新增许可证与项目文档；此前的 `mobile-v0.1.1` 保留作为早期验证记录，不移动历史标签。
+
+需要 **Android 7.0 / API 24 以上**，以及 **Android System WebView / Chrome 91 以上**。在手机打开 APK 按系统提示安装，进入后先登录 Bilibili。官方版本使用固定签名，可覆盖升级并保留应用数据。手机版暂未提供系统悬浮歌词。
 
 ## 已实现的功能
 
@@ -18,9 +24,11 @@
 
 ## 开发和预览
 
-在手机版目录中执行：
+建议使用 **Node.js 24**。克隆手机版仓库后，通过锁文件安装依赖：
 
 ```powershell
+git clone https://github.com/panda472328/yuyin-music-mobile.git
+cd yuyin-music-mobile
 npm ci
 npm run dev
 npm run typecheck
@@ -47,11 +55,13 @@ npm run android:sync
 npm run android:build
 ```
 
-构建需要可用的 Node.js、**完整 JDK 21、Android SDK Platform 36、Build-Tools 35.0.0 与 36.0.0，以及 Platform-Tools**。设备需要 **Android System WebView / Chrome 91 或以上**。通过 `JAVA_HOME` 指定 JDK，通过 `ANDROID_HOME` 指定 SDK；本机工具链的实际版本与安装结果记录在 [验证记录](docs/QA.md)。
+构建需要 Node.js 24、**完整 JDK 21、Android SDK Platform 36、Build-Tools 35.0.0 与 36.0.0，以及 Platform-Tools**。工程使用 Gradle Wrapper 8.14.3 和 Android Gradle Plugin 8.13.0。设备需要 **Android System WebView / Chrome 91 或以上**。通过 `JAVA_HOME` 指定 JDK，通过 `ANDROID_HOME` 指定 SDK；历史工具链和验证结果见 [验证记录](docs/QA.md)，其中的本机路径不是开发必需路径。
+
+`npm run android:build` 包含类型检查、业务测试、生产构建、Capacitor sync、Android 应用单元测试，并生成 Release、Debug 与 instrumentation 测试 APK。设备测试的执行方法见 [Android 原生验证](docs/ANDROID-TESTING.md)。
 
 构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.1.apk`，并生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.1.release.json`。`artifacts/release.json` 指向最近一次构建记录。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
 
-首次构建会在 `%LOCALAPPDATA%\YuyinMobile\signing` 保存固定的 Release 签名密钥和配置，后续升级复用同一签名。请备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。
+首次构建会在本机用户数据目录 `YuyinMobile/signing` 保存固定的 Release 签名密钥和配置，Windows 对应 `%LOCALAPPDATA%\YuyinMobile\signing`，后续升级复用同一签名。请私下备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。也可通过 `YUYIN_ANDROID_KEYSTORE`、`YUYIN_ANDROID_KEY_PASSWORD`、`YUYIN_ANDROID_KEY_ALIAS` 指定自己的签名。自行生成的签名与官方签名不同，不能覆盖升级官方安装包。
 
 更新手机版本使用项目自己的脚本，同时递增 Android versionCode：
 
@@ -66,12 +76,17 @@ npm run android:build
 
 | 内容 | 位置 |
 | --- | --- |
-| 手机 UI、业务与平台适配 | `src/` |
-| Android 原生工程和播放服务 | `android/` |
-| 业务回归测试 | `tests/` |
+| 页面、交互和状态协调 | `src/App.tsx` |
+| 品牌配色与手机布局 | `src/theme.css`、`src/styles.css` |
+| 音乐库、歌词、账号和搜索业务 | `src/domain/` |
+| Capacitor 接口及网页预览适配 | `src/native/` |
+| Android 插件、播放服务、资源与清单 | `android/app/src/main/` |
+| 业务、原生单元和设备测试 | `tests/`、`android/app/src/test/`、`android/app/src/androidTest/` |
 | 构建与版本脚本 | `scripts/` |
 | 安装产物 | `artifacts/` |
 | 验证记录、管理约定 | `docs/` |
 | 本机临时验证材料 | `.qa/`，不纳入 Git |
 
-手机版已同步到独立的私有仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.1.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。手机项目独立提交；公开发布需按用户要求另行处理。
+源码仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。贡献前阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；修改样式参照 [UI-GUIDE.md](docs/UI-GUIDE.md)，Agent 工作入口为 [AGENTS.md](AGENTS.md)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.1.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。
+
+公开附件与版本来源见 [发布说明](docs/RELEASE.md)。项目源码采用 [MIT 许可证](LICENSE)，第三方许可及内容归属见 [第三方声明](THIRD_PARTY_NOTICES.md)。音视频、歌词及第三方依赖保留各自的权利和许可证。
