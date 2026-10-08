@@ -22,7 +22,7 @@ React、Lucide 和 Capacitor 的许可文本从本版本实际安装的 npm 依�
 
 Android System WebView 是设备提供的系统组件，APK 不捆绑独立的 Chromium / Electron 运行时；其许可随设备的 WebView 发行版提供。设备系统组件的权利不由本项目的 MIT 授予。
 
-GitHub [发行页](https://github.com/panda472328/yuyin-music-mobile/releases) 提供与 APK 对应的许可证压缩包。重新分发 APK 时应一并保留本文件、项目 MIT 和适用的原许可证 / NOTICE。上述表格是主要组件索引，不替代依赖本身的完整声明；新增原生库后需核对其传递依赖并补充原始文本。
+GitHub [发行页](https://github.com/panda472328/yuyin-music-mobile/releases) 仅上传该平台最终 APK，说明中链接源码仓库的 [项目 MIT](LICENSE)、本文件和 [原始许可文本](licenses/)。重新分发 APK 时应一并保留本文件、项目 MIT 和适用的原许可证 / NOTICE。上述表格是主要组件索引，不替代依赖本身的完整声明；新增原生库后需核对其传递依赖并补充原始文本。
 
 ## 构建与测试工具
 
@@ -41,4 +41,4 @@ JUnit、AndroidX Test 和 Espresso 用于测试。测试依赖按其自己的许
 
 ## 更新规则
 
-升级依赖时同时核对 npm 锁文件、Gradle 解析后的正式运行时依赖，以及原 LICENSE / NOTICE；新增组件应补充本文件和 `licenses/`，发布时更新对应的许可证压缩包。不得通过替换原版权行或统一改为 MIT 的方式处理第三方文本。
+升级依赖时同时核对 npm 锁文件、Gradle 解析后的正式运行时依赖，以及原 LICENSE / NOTICE；新增组件应补充源码仓库的本文件和 `licenses/`，发布说明同步链接该版本对应的许可文档。不得通过替换原版权行或统一改为 MIT 的方式处理第三方文本。

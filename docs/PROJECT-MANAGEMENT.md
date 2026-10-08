@@ -34,11 +34,11 @@ GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认�
 1. 完成与改动有关的类型、业务、界面或原生检查，在验证记录中区分实际执行、跳过和未验证的内容。
 2. 从已提交的干净源码构建签名 Release APK，核对版本、应用 ID、签名和 SHA-256，保留脚本生成的构建记录。
 3. 更新 `CHANGELOG.md` 和对应版本的验证文档，给发布提交打 `android-v<版本号>` 标签并推送。
-4. 在 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 发布 APK、同名 `.sha256` 和 `.release.json`，说明系统要求、实际改动与验证限制。依赖目录、SDK、日志和签名材料不作为附件。
+4. 在 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 仅上传一个最终 APK 附件，在发布说明中写出 SHA-256、实际 APK 构建提交、公开源码标签提交、签名证书摘要、系统要求、改动与验证限制；提供仓库中 `LICENSE`、`THIRD_PARTY_NOTICES.md` 和 `licenses/` 的链接。
 
 构建记录中的 `commit` 指向 APK 的实际源码来源。后续仅增加许可证、文档与项目元数据的提交可以作为公开发布标签，但必须明确这个差别，不能把旧包描述成由新业务代码构建。当前 0.1.1 APK 来源为 `0b4a5dde2f7bf018603526a4a3d5c2445968ad2f`，`android-v0.1.1` 对应本轮开源整理，应用版本和已验证二进制保持 0.1.1；整理未修改业务代码或发布签名。
 
-安装包使用 `Yuyin-Mobile-<版本号>.apk` 及对应 `.apk.sha256` 和 `.release.json`。`artifacts/release.json` 仅表示本机最近一次构建；正式发布使用版本化文件。已发布标签和附件保留用于追溯，不覆盖为另一个版本的内容。
+本地安装包使用 `Yuyin-Mobile-<版本号>.apk` 及对应 `.apk.sha256` 和 `.release.json`。`artifacts/release.json` 仅表示本机最近一次构建；校验文件、构建记录和本地整理清单保留在 `artifacts/`。发布页的手动上传附件只保留该版本最终 APK，许可文本保留在源码仓库。已发布标签和安装包保留用于追溯，不覆盖为另一个版本的内容。
 
 ## 数据与凭据
 

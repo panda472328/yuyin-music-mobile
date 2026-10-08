@@ -6,7 +6,7 @@
 
 ## 下载和安装
 
-从 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 下载 APK，当前公开版本为 [android-v0.1.1](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.1)。安装文件是 `Yuyin-Mobile-0.1.1.apk`；同一发布页提供 SHA-256 校验文件和构建来源记录。应用版本仍为 0.1.1，公开源码标签新增许可证与项目文档；此前的 `mobile-v0.1.1` 保留作为早期验证记录，不移动历史标签。
+从 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases) 下载 APK，当前公开版本为 [android-v0.1.1](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.1)。该平台仅上传一个安装附件：`Yuyin-Mobile-0.1.1.apk`；SHA-256、实际 APK 构建提交和签名证书摘要写在发布说明中。应用版本仍为 0.1.1，公开源码标签新增许可证与项目文档；此前的 `mobile-v0.1.1` 保留作为早期验证记录，不移动历史标签。
 
 需要 **Android 7.0 / API 24 以上**，以及 **Android System WebView / Chrome 91 以上**。在手机打开 APK 按系统提示安装，进入后先登录 Bilibili。官方版本使用固定签名，可覆盖升级并保留应用数据。手机版暂未提供系统悬浮歌词。
 
@@ -59,7 +59,7 @@ npm run android:build
 
 `npm run android:build` 包含类型检查、业务测试、生产构建、Capacitor sync、Android 应用单元测试，并生成 Release、Debug 与 instrumentation 测试 APK。设备测试的执行方法见 [Android 原生验证](docs/ANDROID-TESTING.md)。
 
-构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.1.apk`，并生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.1.release.json`。`artifacts/release.json` 指向最近一次构建记录。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
+构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.1.apk`，并在本地生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.1.release.json`。`artifacts/release.json` 指向最近一次构建记录。这些校验与来源文件保留在本地归档，GitHub 发布页只上传最终 APK，并将相关摘要写入发布说明。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
 
 首次构建会在本机用户数据目录 `YuyinMobile/signing` 保存固定的 Release 签名密钥和配置，Windows 对应 `%LOCALAPPDATA%\YuyinMobile\signing`，后续升级复用同一签名。请私下备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。也可通过 `YUYIN_ANDROID_KEYSTORE`、`YUYIN_ANDROID_KEY_PASSWORD`、`YUYIN_ANDROID_KEY_ALIAS` 指定自己的签名。自行生成的签名与官方签名不同，不能覆盖升级官方安装包。
 
@@ -89,4 +89,4 @@ npm run android:build
 
 源码仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。贡献前阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；修改样式参照 [UI-GUIDE.md](docs/UI-GUIDE.md)，Agent 工作入口为 [AGENTS.md](AGENTS.md)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.1.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。
 
-公开附件与版本来源见 [发布说明](docs/RELEASE.md)。项目源码采用 [MIT 许可证](LICENSE)，第三方许可及内容归属见 [第三方声明](THIRD_PARTY_NOTICES.md)。音视频、歌词及第三方依赖保留各自的权利和许可证。
+安装文件与版本来源见 [发布说明](docs/RELEASE.md)。项目源码采用 [MIT 许可证](LICENSE)，第三方许可及内容归属见 [第三方声明](THIRD_PARTY_NOTICES.md) 和仓库中的 [原始许可文本](licenses/)。音视频、歌词及第三方依赖保留各自的权利和许可证。
