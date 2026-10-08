@@ -2,7 +2,7 @@
 
 余音的独立 Android 项目，当前版本为 **0.1.1**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。PC 版继续位于 `D:\音乐播放器`，手机版源码、依赖和安装产物位于 `D:\音乐播放器-手机版`，两者分别管理 Git 历史。0.1.1 按 PC 版统一了米白与鼠尾草绿主题、品牌、唱片元素和歌词高亮，保留适合触屏的布局；详见 [界面规范](docs/UI-GUIDE.md)。
 
-初版已完成业务逻辑、手机界面和 Android 原生播放服务，并实际构建出 **0.1.0 签名 Release APK**。TypeScript 检查、11 项业务测试、11 项界面检查、4 项 Android 单元测试和 3 项模拟器原生测试通过。最终包已在 Android 9 模拟器安装并启动；原生存储也通过强制结束应用后重新读取验证。具体结果见 [验证记录](docs/QA.md)。真实 Bilibili 登录、实播与后台表现需要在用户手机上验收。
+当前 **0.1.1 签名 Release APK** 已完成构建，通过 TypeScript 检查、11 项业务测试、11 项界面检查及 4 项 Android 单元测试；正式包已在 Android 9 模拟器同签名覆盖安装并启动，详见 [0.1.1 验证记录](docs/QA-0.1.1.md)。初版的受控后台播放、3 项原生测试和强制结束后存储恢复结果保留在 [0.1.0 验证记录](docs/QA.md)。真实 Bilibili 登录、实播与后台表现需要在用户手机上验收。
 
 ## 已实现的功能
 
@@ -74,4 +74,4 @@ npm run android:build
 | 验证记录、管理约定 | `docs/` |
 | 本机临时验证材料 | `.qa/`，不纳入 Git |
 
-手机版已同步到独立的私有仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。详见 [更新记录](CHANGELOG.md)、[验证记录](docs/QA.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。手机项目独立提交；公开发布需按用户要求另行处理。
+手机版已同步到独立的私有仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.1.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。手机项目独立提交；公开发布需按用户要求另行处理。

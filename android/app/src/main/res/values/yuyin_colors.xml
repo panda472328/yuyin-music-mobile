@@ -2,4 +2,6 @@
 <resources>
     <color name="yuyin_splash">#F7F8F3</color>
     <color name="yuyin_green">#4C663A</color>
+    <!-- Android 7 cannot draw dark navigation icons; keep its system bar green. -->
+    <color name="yuyin_navigation">#4C663A</color>
 </resources>

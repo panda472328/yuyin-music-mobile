@@ -9,7 +9,7 @@
         <item name="colorAccent">@color/yuyin_green</item>
         <item name="android:windowBackground">@color/yuyin_splash</item>
         <item name="android:statusBarColor">@color/yuyin_splash</item>
-        <item name="android:navigationBarColor">@color/yuyin_splash</item>
+        <item name="android:navigationBarColor">@color/yuyin_navigation</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>
@@ -26,7 +26,7 @@
         <item name="windowSplashScreenBackground">@color/yuyin_splash</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_yuyin</item>
         <item name="android:statusBarColor">@color/yuyin_splash</item>
-        <item name="android:navigationBarColor">@color/yuyin_splash</item>
+        <item name="android:navigationBarColor">@color/yuyin_navigation</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>

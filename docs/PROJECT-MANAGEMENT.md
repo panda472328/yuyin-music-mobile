@@ -39,4 +39,4 @@ Android 音乐库和偏好设置位于该应用的私有存储中，WebView 登�
 
 Windows 中文工作目录通过 `%LOCALAPPDATA%\YuyinMobile\workspace` 的目录联接参与 Gradle 构建，实际文件仍保存在手机版目录，不复制或移动源码。这样避免 JDK 的参数文件编码问题。工具链及缓存保存在独立的 `%LOCALAPPDATA%\YuyinMobile\toolchain`，不进入手机或 PC 仓库。
 
-APK 构建、签名和设备安装的具体结果写入 [验证记录](QA.md)，只记录实际执行过的项目。
+APK 构建、签名和设备安装的具体结果按版本记录：[0.1.1](QA-0.1.1.md)、[0.1.0](QA.md)，只记录实际执行过的项目。每份 APK 同时保留对应的 `.sha256` 与 `.release.json`；`artifacts/release.json` 为最近一次构建记录。
