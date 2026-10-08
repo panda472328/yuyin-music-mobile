@@ -18,7 +18,7 @@ TypeScript 检查、17 项业务测试与 12 项隔离界面检查通过，页�
 
 ## 原生与安装包
 
-本轮类型、业务、网页构建、Capacitor sync 和 Release / Debug / instrumentation 编译通过，4 项 Android 单元测试通过。原生设备回归已完成，具体范围与结果如下；最终干净源码签名 APK、构建提交、校验值与正式包覆盖安装仍待补充，不以 Debug 测试代替正式包验收。
+本轮类型、业务、网页构建、Capacitor sync 和 Release / Debug / instrumentation 编译通过，4 项 Android 单元测试通过。原生设备回归的范围与结果如下；最终干净源码签名 APK、来源、校验与正式包覆盖升级结果见本文末尾，分别记录 Debug 媒体测试与 Release 安装验收。
 
 专用模拟器是本轮从发行模板新建的 LDPlayer Android 9 / API 28 实例 `emulator-5556`，WebView 91.0.4472.114；没有启动或读取原有实例的账号、音乐库或设置。
 
@@ -55,3 +55,22 @@ TypeScript 检查、17 项业务测试与 12 项隔离界面检查通过，页�
 ## 未验证范围
 
 真实 Bilibili 登录与歌曲播放、实际手机长时间锁屏及省电条件仍需要在对应设备单独验收。应用进程被系统终止后的持续播放不属于本轮保证范围。
+
+## 最终签名包与覆盖升级
+
+最终完整构建通过类型、17 项业务测试、Vite 生产构建、Capacitor sync、4 项 Android 单元测试及 Release / Debug / instrumentation 编译。源码提交为 `e3d6f41743ae8ec58a2964200ec2071888b92794`，构建记录 `dirty=false`，日志为 `.qa/android-build-0.1.2-clean-final.log`；后续仅补充本次产物的验证与发布文档。
+
+| 项目 | 实际结果 |
+| --- | --- |
+| 最终 APK | `Yuyin-Mobile-0.1.2.apk`，3,309,135 字节 |
+| APK SHA-256 | `e6e1149714087941fdf6039347ab51425e71a1ce0a54a6511ef26e0984730d81` |
+| 签名证书 SHA-256 | `068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146` |
+| 签名与应用信息 | APK v2 通过；`com.yuyin.music.mobile`，0.1.2 / 3，minSdk 24 / targetSdk 36 |
+| Release 隔离 | DEX 不含 Debug 宿主或设备测试类，ZIP 不含测试媒体与惰性 QA 资产 |
+| 权限检查 | 未声明悬浮窗、视频捕获或录音权限 |
+| 正式包覆盖升级 | 专用 `emulator-5556` 从 0.1.1 覆盖到 0.1.2，首次安装时间不变 |
+| 启动与登录页 | MainActivity 启动通过，实际截图确认未登录引导与登录按钮正常显示 |
+
+安装与截图只使用本轮的空专用模拟器，先移除测试签名包，再安装旧正式包并覆盖升级；没有操作日常设备或原有模拟器。Release WebView 未向 UIAutomator 暴露文字树，因此登录页显示通过 `.qa/release-ui-0.1.2.png` 人工视觉核对，没有把空文字树当作自动 UI 检查通过。包检查、升级及视觉核对记录分别在 `.qa/final-apk-integrity-0.1.2.json` 与 `.qa/release-install-0.1.2-evidence.json`。
+
+本轮 GitHub 发布页只上传该 APK；校验、实际构建来源、公开源码提交与许可链接写入发布正文，本机校验与来源文件留在 `artifacts/` 归档。
