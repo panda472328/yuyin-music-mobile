@@ -8,6 +8,7 @@ import { initializeLibrary, saveLibrary as normalizeLibrary, type LibraryState }
 import { defaultPreferences, normalizePreferences } from '../domain/preferences'
 import { buildLyricsQueries, selectLyricsMatch } from '../domain/lyrics'
 import { buildWbiQuery, selectSubtitle, subtitleDescriptor, subtitleBodyToLyrics } from '../domain/subtitles'
+import { normalizeUpdateState, type MobileUpdateState } from '../domain/updates'
 export { getLyricOffset } from '../domain/preferences'
 
 const API = 'https://api.bilibili.com'
@@ -17,6 +18,7 @@ const noopListener = (): PluginListenerHandle => ({ remove: async () => {} })
 const unavailable = (): never => { throw new Error('登录和播放需要在 Android APK 中使用，浏览器只用于预览界面。') }
 
 const preview: YuyinNativePlugin = {
+  checkUpdate: async () => unavailable(), downloadUpdate: async () => unavailable(), cancelUpdate: async () => unavailable(), installUpdate: async () => unavailable(), getUpdateState: async () => unavailable(),
   request: async () => unavailable(), openLogin: async () => unavailable(), openSource: async () => unavailable(),
   play: async () => unavailable(), pause: async () => unavailable(), resume: async () => unavailable(), seek: async () => unavailable(), setVolume: async () => unavailable(),
   getStatus: async () => ({ state: 'idle', song: null, currentTime: 0, duration: 0, volume: 0.7, error: null }),
@@ -116,6 +118,16 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
   }
 
   return {
+    checkUpdate: async () => normalizeUpdateState(await native.checkUpdate()),
+    downloadUpdate: async () => normalizeUpdateState(await native.downloadUpdate()),
+    cancelUpdate: async () => normalizeUpdateState(await native.cancelUpdate()),
+    installUpdate: async () => normalizeUpdateState(await native.installUpdate()),
+    getUpdateState: async () => normalizeUpdateState(await native.getUpdateState()),
+    addUpdateListener: (callback: (state: MobileUpdateState) => void) => native.addListener('updateState', state => {
+      let parsed: MobileUpdateState
+      try { parsed = normalizeUpdateState(state) } catch { return }
+      callback(parsed)
+    }),
     checkAccount: () => android ? account.getStatus() : Promise.resolve({ loggedIn: false as const, account: null }),
     async login() {
       invalidateSession()

@@ -20,7 +20,7 @@ public class YuyinNativeContractTest {
         CapacitorPlugin plugin = YuyinMobilePlugin.class.getAnnotation(CapacitorPlugin.class);
         assertNotNull(plugin);
         assertEquals("YuyinMobile", plugin.name());
-        String[] methods = {"request", "openLogin", "openSource", "play", "pause", "resume", "seek", "setVolume", "getStatus", "readStore", "writeStore"};
+        String[] methods = {"request", "openLogin", "openSource", "play", "pause", "resume", "seek", "setVolume", "getStatus", "readStore", "writeStore", "checkUpdate", "downloadUpdate", "cancelUpdate", "installUpdate", "getUpdateState"};
         for (String method : methods) assertTrue(method, YuyinMobilePlugin.class.getDeclaredMethod(method, PluginCall.class).isAnnotationPresent(PluginMethod.class));
     }
     @Test public void foregroundPlayerIsPrivateAndMobileDataHasItsOwnApplicationId() throws Exception {

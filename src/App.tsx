@@ -12,6 +12,7 @@ import { AccountGateController } from './domain/account-gate'
 import { mobile, isAndroid, getLyricOffset } from './native/api'
 import type { MobilePreferences } from './native/contract'
 import packageInfo from '../package.json'
+import { UpdateCard, useMobileUpdates } from './components/Updates'
 
 type Tab = 'search' | 'library' | 'player' | 'settings'
 type LibraryView = 'overview' | 'favorites' | 'history' | string
@@ -54,6 +55,7 @@ function SongRow({ song, favorite, active, onPlay, onFavorite, onMore, index }: 
 }
 
 export default function App() {
+  const updates = useMobileUpdates()
   const [tab, setTab] = useState<Tab>('search')
   const [libraryView, setLibraryView] = useState<LibraryView>('overview')
   const [library, setLibrary] = useState<LibraryState | null>(null)
@@ -434,6 +436,7 @@ export default function App() {
     {loadError && <div className="alert persistent" role="alert"><span>{loadError}</span><button onClick={() => void loadStores()}>重试读取</button></div>}
     {error && <div className="alert" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError(null)} aria-label="关闭错误提示"><X size={18} /></button></div>}
     {notice && <div className="toast" role="status"><Check size={17} />{notice}</div>}
+    {updates.showBanner && tab !== 'settings' && <UpdateCard update={updates} compact />}
 
     {booting ? <main className="loading-screen"><LoaderCircle className="spin" size={28} /><p>正在读取你的音乐库…</p></main> : isAndroid && !account.loggedIn ?
       <main className="login-screen">
@@ -441,6 +444,8 @@ export default function App() {
         <span className="eyebrow">WELCOME TO YUYIN</span><h1>登录，开始听见喜欢</h1><p>使用你的 Bilibili 账号搜索音乐，<br />把收藏夹里的好声音带到这里。</p>
         <button className="primary-button wide" onClick={login}><LogIn size={19} />登录 Bilibili<ArrowRight size={19} /></button>
         <button className="text-button" onClick={() => void checkAccount()} disabled={accountChecking}>{accountChecking ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}我已登录，重新检查</button>
+        <button className="text-button" onClick={updates.check} disabled={updates.pending}>检查软件更新</button>
+        {!updates.state.update && updates.state.state === 'error' && <p className="inline-error" role="alert">{updates.state.message}</p>}
         {accountError && <p className="inline-error" role="alert">{accountError}</p>}
         <span className="login-note">登录在 Bilibili 官方页面完成<br />你的账号与音乐库保存在这台手机上</span>
       </main> : <main className={`content ${tab === 'player' ? 'player-content' : ''} ${tab === 'player' && showTiming ? 'timing-visible' : ''}`}>
@@ -502,6 +507,7 @@ export default function App() {
 
       {tab === 'settings' && <>
         <div className="page-intro"><span className="eyebrow">MAKE IT YOURS</span><h1>听歌设置</h1><p>习惯的方式，舒服的声音。</p></div>
+        <UpdateCard update={updates} />
         <div className="settings-card account-card"><span className="settings-account-avatar"><Avatar url={account.loggedIn ? account.account.avatar : undefined} /></span><span><strong>{account.loggedIn ? account.account.username : 'Bilibili 账号'}</strong><small>{account.loggedIn ? `UID ${account.account.mid}` : '登录后使用搜索和播放'}</small></span><button className="text-button" onClick={login}>{account.loggedIn ? '管理' : '登录'}<ChevronRight size={16} /></button></div>
         <div className="settings-card"><div className="settings-label"><Volume2 size={19} /><span><strong>播放音量</strong><small>每次打开，保留你习惯的音量</small></span><b>{volumeDraft}%</b></div><input type="range" min={0} max={100} value={volumeDraft} aria-label="播放音量" onChange={event => setVolumeDraft(Number(event.target.value))} onPointerUp={saveVolume} onKeyUp={event => { if (event.key.startsWith('Arrow') || ['Home', 'End'].includes(event.key)) saveVolume() }} /></div>
         <div className="settings-card"><div className="settings-label"><Music2 size={19} /><span><strong>默认歌词来源</strong><small>切换后，也会记住你的选择</small></span></div><div className="setting-options"><button className={provider === 'bilibili' ? 'selected' : ''} onClick={() => setSource('bilibili')}><span>Bilibili 字幕<small>与视频对应，优先使用</small></span>{provider === 'bilibili' && <Check size={19} />}</button><button className={provider === 'lrclib' ? 'selected' : ''} onClick={() => setSource('lrclib')}><span>搜索歌词<small>来自 LRCLIB，可逐首校准</small></span>{provider === 'lrclib' && <Check size={19} />}</button></div></div>

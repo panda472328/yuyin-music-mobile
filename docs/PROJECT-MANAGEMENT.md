@@ -31,6 +31,8 @@ GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认�
 
 ## 发布约定
 
+自动发布流程和 `updates/stable.json` 维护见 [UPDATES.md](UPDATES.md)。Actions 只在 `android-vX.Y.Z` 标签推送时触发，沿用 secrets 中的正式签名，核对实际 APK 并公开唯一附件后才推进稳定通道；不能通过替换同版本文件发布更新。
+
 1. 完成与改动有关的类型、业务、界面或原生检查，在验证记录中区分实际执行、跳过和未验证的内容。
 2. 从已提交的干净源码构建签名 Release APK，核对版本、应用 ID、签名和 SHA-256，保留脚本生成的构建记录。
 3. 更新 `CHANGELOG.md` 和对应版本的验证文档，给发布提交打 `android-v<版本号>` 标签并推送。

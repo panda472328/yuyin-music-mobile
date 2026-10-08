@@ -77,3 +77,35 @@ Android WebView 为 HTML5 媒体自行申请音频焦点。服务仅在新源文
 Debug 宿主与惰性资产只存在于 `src/debug`；测试代码与自制视频只存在于 `src/androidTest`。正式 Release APK 不包含这些宿主、夹具或媒体注入入口。媒体流程完成或失败后都会停止测试播放服务并唤醒屏幕。
 
 受控原生成功仅证明该模拟器上的原生机制。真实 Bilibili 登录、网络歌曲播放、手机长时间锁屏、省电条件与不同 Android/WebView 版本仍需分别验收。Activity 销毁后服务仍运行，也不等于应用进程被系统终止后还能持续播放。
+
+## 0.1.3 受控更新验证
+
+本节追加更新验证入口，不替换上文 0.1.2 的历史结果。本轮实际结果和限制见 [0.1.3 验证记录](QA-0.1.3.md)。本轮使用从发行模板新建的 index 2 / `emulator-5558`，验证结束后停止；复现时必须换成自己明确选定的独立测试设备。
+
+`ControlledUpdateTest` 包含 3 项：清单解析、FileProvider 范围，以及下载与系统安装流程。完整流程要求显式 `yuyinControlledEmulator=true`、API 26 以上、没有已有音乐库或偏好键，以及已提供下述未来 APK 和错误签名 APK；条件不满足时跳过，不能记为通过。
+
+完整流程当前使用固定的未来夹具 0.1.3 / versionCode 4，被测应用应为含本次更新源码的 Debug 0.1.2 / versionCode 3。两份夹具在隔离构建目录中生成，保持 `com.yuyin.music.mobile` 包名：正确夹具与被测应用使用同一个 Debug 证书，错误夹具使用临时合成测试证书。不得使用正式发布密钥，不得为生成夹具改动主仓库版本文件或把夹具当作发行 APK。项目以后升级版本时，需同步测试中的未来版本常量和隔离夹具，使候选 versionCode 高于被测应用；相同 versionCode 不能作为升级成功证明。
+
+配置 JDK / Android SDK 后，先生成 Debug 与 instrumentation 包。不要为这套测试调用会读取正式签名的发行构建步骤。以下路径假定已经按上述要求准备好隔离 Debug 应用和两份夹具；本轮用 Windows 路径，其他平台相应调整。
+
+```powershell
+# 在 android 目录执行；必要时使用你自己的本地依赖镜像配置
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+
+# 在项目根目录执行，仅使用明确选定的独立设备
+adb -s emulator-5558 install -r .qa/updates-installed-debug.apk
+adb -s emulator-5558 install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5558 push .qa/updates-candidate-debug.apk /data/local/tmp/yuyin-update-valid.apk
+adb -s emulator-5558 push .qa/updates-wrong-signature.apk /data/local/tmp/yuyin-update-wrong-signature.apk
+
+adb -s emulator-5558 shell am instrument -w -r -e class com.yuyin.music.mobile.ControlledUpdateTest -e yuyinControlledEmulator true -e yuyinCheckSystemInstaller true -e yuyinCandidateApk /data/local/tmp/yuyin-update-valid.apk -e yuyinWrongSignatureApk /data/local/tmp/yuyin-update-wrong-signature.apk com.yuyin.music.mobile.test/androidx.test.runner.AndroidJUnitRunner
+
+# 仅本轮完整流程成功后读取；同时核对本轮日志，不能把旧文件当作通过
+adb -s emulator-5558 shell run-as com.yuyin.music.mobile cat cache/qa-update-evidence.json
+```
+
+本轮 3 项均通过，无失败、无跳过。下载测试通过仅存在于 instrumentation APK 的 HTTPS URL handler 提供内存响应，保留正式地址校验、重定向处理、文件写入、PackageManager 包与证书解析以及实际更新状态逻辑。它覆盖非法重定向、HTTP 错误、损坏与截断文件、错误签名、取消和重试。安装部分先捕获权限和安装 Intent，验证应用专属设置页、受限 FileProvider 与只读权限，再实际打开 Android 安装确认页，确认余音和安装操作可见后返回取消。测试会临时调整独立设备上本应用的安装 AppOp，结束时恢复默认；不确认安装、不改变被测应用版本。
+
+测试还检查重复安装调用和销毁后的迟到校验，不读取账号 Cookie，不调用 Bilibili 网络接口；应用库与偏好在流程后仍保持不存在。正确夹具缓存只在这个明确的受控流程中清理，以便重试本轮下载边界，不清空应用数据。真实网络下载、正式签名覆盖升级和非空音乐库保留是不同的验收范围。
+
+本轮另外重跑了现有 2 项契约、2 项受控登录和 1 项媒体回归，共计 8 项 instrumentation 通过。日志路径与类型、业务、界面、单元测试结果统一记录在 [QA-0.1.3.md](QA-0.1.3.md)。本机日志、截图、测试 APK、缓存、临时签名和设备证据不提交源码，也不进入 Release 附件。

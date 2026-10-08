@@ -15,10 +15,22 @@ const other = {...song,id:'BV0TEST00002',bvid:'BV0TEST00002',title:'测试歌曲
 const defaultLibrary=()=>({version:1,favorites:[],playlists:[{id:'playlist-default',name:'我的歌单',description:'',createdAt:Date.now(),songs:[]}],history:[],settings:{volume:.7,playMode:'sequence',autoPlayFirst:false},queue:[]});
 let status={state:'idle',song:null,currentTime:0,duration:0,volume:.7,error:null};
 const statusListeners=new Set(),sessionListeners=new Set(),endedListeners=new Set();
+let updateState={state:'idle',currentVersion:'0.1.2',currentVersionCode:3,revision:0};
+const updateListeners=new Set();
+const emitUpdate=next=>{updateState={...next,revision:updateState.revision+1};for(const cb of updateListeners)cb({...updateState})};
 const emit=()=>{for(const cb of statusListeners)cb({...status})};
 window.__mobileQA={playCalls:0,seekCalls:[],saveCalls:0,failSave:false,advance:(seconds)=>{status.currentTime=seconds;emit()},ended:()=>{status.state='ended';emit();for(const cb of endedListeners)cb(status.song)}};
+window.__mobileQA.updateCalls=0;window.__mobileQA.downloadCalls=0;window.__mobileQA.installCalls=0;
+window.__mobileQA.offerUpdate=()=>emitUpdate({state:'available',currentVersion:'0.1.2',currentVersionCode:3,update:{version:'0.1.3',versionCode:4,url:'https://github.com/panda472328/yuyin-music-mobile/releases/download/android-v0.1.3/Yuyin-Mobile-0.1.3.apk',releaseNotesUrl:'https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.3',notes:'受控更新说明：保留收藏和歌单。',size:8000000,publishedAt:'2026-10-08T00:00:00.000Z'}});
+window.__mobileQA.updateReady=()=>emitUpdate({...updateState,state:'ready',progress:100});
+window.__mobileQA.staleUpdate=()=>{for(const cb of updateListeners)cb({state:'idle',currentVersion:'0.1.2',currentVersionCode:3,revision:0})};
 const listener=(set,callback)=>{set.add(callback);return Promise.resolve({remove:async()=>set.delete(callback)})};
 export const mobile={
+getUpdateState:async()=>({...updateState}),addUpdateListener:cb=>listener(updateListeners,cb),
+checkUpdate:async()=>{window.__mobileQA.updateCalls++;emitUpdate({...updateState,state:'upToDate'});return {...updateState}},
+downloadUpdate:async()=>{window.__mobileQA.downloadCalls++;emitUpdate({...updateState,state:'downloading',progress:42});return {...updateState}},
+cancelUpdate:async()=>{emitUpdate({...updateState,state:'available',progress:0});return {...updateState}},
+installUpdate:async()=>{window.__mobileQA.installCalls++;emitUpdate({...updateState,state:'permissionRequired'});return {...updateState}},
 checkAccount:async()=>localStorage.getItem('qa-mobile-login')==='1'?{loggedIn:true,account:{mid:1234,username:'测试用户',avatar:''}}:{loggedIn:false,account:null},
 login:async()=>{localStorage.setItem('qa-mobile-login','1')},openSource:async()=>{},
 search:async(query,page=1)=>({query,songs:[song,other],page,pageSize:20,total:2,hasMore:false}),
@@ -163,6 +175,39 @@ try {
       await page.setViewportSize(viewport)
       await assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Home horizontal overflow at ${viewport.width}`)
       await page.screenshot({path:path.join(output, `08-home-${viewport.width}.png`),fullPage:viewport.height>600})
+    }
+  })
+  await check('updates require consent, cancel and retry independently of music data', async () => {
+    await page.setViewportSize({width:360,height:800})
+    const before = await page.evaluate(() => ({ library:localStorage.getItem('qa-mobile-library'),preferences:localStorage.getItem('qa-mobile-preferences'),playCalls:window.__mobileQA.playCalls }))
+    await page.evaluate(() => window.__mobileQA.offerUpdate())
+    await page.getByRole('button', {name:'下载更新',exact:true}).waitFor()
+    await page.evaluate(() => window.__mobileQA.staleUpdate())
+    await page.getByRole('button', {name:'下载更新',exact:true}).waitFor()
+    await assert(await page.evaluate(() => window.__mobileQA.downloadCalls === 0), 'An automatic check downloaded without user consent')
+    await page.getByRole('button', {name:'稍后更新',exact:true}).click()
+    await assert(await page.getByRole('button', {name:'下载更新',exact:true}).count() === 0, 'Dismissed update remained open')
+    await page.getByRole('button', {name:'设置',exact:true}).click()
+    await page.getByRole('button', {name:'下载更新',exact:true}).click()
+    await page.getByRole('progressbar', {name:'更新下载进度'}).waitFor()
+    await page.screenshot({path:path.join(output,'09-update-download.png'),fullPage:true})
+    await page.getByRole('button', {name:'取消下载',exact:true}).click()
+    await page.getByRole('button', {name:'下载更新',exact:true}).waitFor()
+    await page.getByRole('button', {name:'下载更新',exact:true}).click()
+    await page.evaluate(() => window.__mobileQA.updateReady())
+    await page.getByRole('button', {name:'继续安装',exact:true}).click()
+    await page.getByText('请允许安装更新，再返回继续',{exact:true}).waitFor()
+    await assert(await page.evaluate(() => window.__mobileQA.installCalls === 1), 'Install did not require an explicit action')
+    await page.evaluate(() => window.__mobileQA.updateReady())
+    await page.screenshot({path:path.join(output,'10-update-ready-offer.png'),fullPage:true})
+    await assert(await page.evaluate(expected => JSON.stringify({ library:localStorage.getItem('qa-mobile-library'),preferences:localStorage.getItem('qa-mobile-preferences'),playCalls:window.__mobileQA.playCalls }) === JSON.stringify(expected),before), 'Updates altered saved music or playback')
+    for(const viewport of [{width:320,height:740},{width:360,height:800},{width:844,height:390}]) {
+      await page.setViewportSize(viewport)
+      await assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Update card overflow')
+      await page.getByRole('button', {name:'继续安装',exact:true}).click()
+      await page.getByText('请允许安装更新，再返回继续',{exact:true}).waitFor()
+      await page.evaluate(() => window.__mobileQA.updateReady())
+      await page.screenshot({path:path.join(output,`11-update-${viewport.width}.png`),fullPage:viewport.height>600})
     }
   })
   await assert(!errors.length, `Page errors: ${errors.join('; ')}`)

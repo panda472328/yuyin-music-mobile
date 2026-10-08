@@ -16,6 +16,7 @@
 | 歌词与校准 | `.lyric-window`、`.lyric-lines`、`.source-select`、`.timing-*` | 当前句、校准态、空歌词和歌词来源切换 |
 | 播放器与底部导航 | `.player-*`、`.transport`、`.mini-player`、`.bottom-nav` | 进度拖动、底部安全区、歌词滚动、横屏 |
 | 操作弹层 | `.sheet-backdrop`、`.sheet*` | 长列表、关闭按钮、危险操作、屏幕键盘 |
+| 更新卡片与新版提示 | `src/components/Updates.tsx`、`.update-card`、`.update-banner`、`.update-notes`、`.update-actions` | 登录前检查、设置检查、下载进度、取消、失败重试与系统安装确认 |
 | 文案、结构或状态类 | `src/App.tsx` | 保留已有事件、保存确认和无障碍标记 |
 | 启动页与 Android 系统栏 | `capacitor.config.ts`、`android/app/src/main/res/values/yuyin_colors.xml`、`values-v26/yuyin_colors.xml`、`values/styles.xml` | API 24–25 和 API 26 以上的图标可读性 |
 | 网页与 Android 图标 | `public/icon.svg`、`public/icon.png`、原生 `mipmap-*` 和 `drawable/ic_yuyin.png` | 网页、启动页、桌面图标分别验收 |
@@ -73,6 +74,7 @@ Android WebView 中没有浏览器地址栏，页面与播放器高度使用 `vh
 - 歌词当前句保留字体加粗和左侧圆点；修改字体或行高后检查自动滚动及点选句子是否仍准确。样式调整不改变同步偏移或媒体时间。
 - 底部弹层内部滚动，关闭按钮保持可点；长歌名可以换行，内容不得通过横向溢出扩大页面。
 - 保留 `prefers-reduced-motion`，旋转、平滑滚动和过渡在用户减少动画时降级。
+- 更新卡片复用 `--surface`、`--line`、`--green`、`--muted` 和已有按钮语义。`.update-notes` 保留换行并容纳长说明；`.update-actions` 在窄屏换行，不遮盖底部播放控件。检查、下载期间保留可理解的状态及 disabled，下载可取消，安装由用户明确选择；不要在组件样式中触发检查／下载或改变原生安装与校验逻辑。登录前和设置页的入口分别检查空态、发现新版、进度、失败和已下载状态，详情见 [UPDATES.md](UPDATES.md)。
 
 ## 推荐修改流程
 

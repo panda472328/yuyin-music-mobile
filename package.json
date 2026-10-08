@@ -1,6 +1,6 @@
 {
   "name": "yuyin-music-mobile",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "余音 Android 手机版，独立于 PC 版管理",
   "type": "module",

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "platform": "android",
+  "version": "0.1.2",
+  "versionCode": 3,
+  "artifact": {
+    "url": "https://github.com/panda472328/yuyin-music-mobile/releases/download/android-v0.1.2/Yuyin-Mobile-0.1.2.apk",
+    "sha256": "e6e1149714087941fdf6039347ab51425e71a1ce0a54a6511ef26e0984730d81",
+    "size": 3309135
+  },
+  "releaseNotesUrl": "https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.2",
+  "notes": "修复登录成功后未自动返回，以及播放网页切后台后暂停的问题。此历史版本尚无应用内更新入口。",
+  "publishedAt": "2026-10-08T12:42:25.000Z"
+}

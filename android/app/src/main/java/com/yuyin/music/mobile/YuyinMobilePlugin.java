@@ -53,6 +53,8 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService storeIo = Executors.newSingleThreadExecutor();
+    private final ExecutorService updateIo = Executors.newSingleThreadExecutor();
+    private UpdateManager updates;
     private Dialog dialog;
     private WebView loginView;
     private String loginCookieSignature;
@@ -184,6 +186,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     }
 
     @Override public void load() {
+        updates = new UpdateManager(getContext(), main, updateIo, value -> { if (!destroyed) notifyListeners("updateState", value, true); });
         PlaybackService.addListener(this);
         main.post(() -> {
             CookieManager.getInstance().setAcceptCookie(true);
@@ -291,6 +294,11 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     @PluginMethod public void getStatus(PluginCall call) {
         main.post(() -> { PlaybackService service = PlaybackService.current(); call.resolve(service == null ? PlaybackService.idleStatus() : service.status()); });
     }
+    @PluginMethod public void checkUpdate(PluginCall call) { updates.check(call::resolve); }
+    @PluginMethod public void downloadUpdate(PluginCall call) { updates.download(call::resolve); }
+    @PluginMethod public void cancelUpdate(PluginCall call) { call.resolve(updates.cancel()); }
+    @PluginMethod public void getUpdateState(PluginCall call) { call.resolve(updates.status()); }
+    @PluginMethod public void installUpdate(PluginCall call) { updates.install(call::resolve); }
     private PlaybackService.Completion completion(PluginCall call) {
         AtomicBoolean finished = new AtomicBoolean(false);
         return new PlaybackService.Completion() {
@@ -446,6 +454,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
             PlaybackService service = PlaybackService.current();
             if (service != null) { service.attachActivity(getActivity()); onStatus(service.status()); }
             verifyLoginSession();
+            if (updates != null) updates.resume();
         });
     }
     @Override protected void handleOnDestroy() {
@@ -457,6 +466,8 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         main.removeCallbacksAndMessages(null);
         io.shutdown();
         storeIo.shutdown();
+        if (updates != null) updates.destroy();
+        updateIo.shutdown();
         // Do not stop the service or pause its WebView when the Capacitor UI goes away.
         CookieManager.getInstance().flush();
     }

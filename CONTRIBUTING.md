@@ -44,3 +44,5 @@ npm run build
 描述具体问题、修改后的行为、验证命令与结果，以及尚未验证的设备范围。样式修改附相关截图，涉及状态、存储或歌词时说明如何保留兼容。对两个平台共同的修复分别提交，不建立跨仓库运行依赖。
 
 发布版本由 `scripts/set-version.mjs` 更新，Android versionCode 必须递增；同步维护 `CHANGELOG.md` 和验证文档。普通贡献不需要自行改版本号。发布标签、签名和附件约定见 [PROJECT-MANAGEMENT.md](docs/PROJECT-MANAGEMENT.md)。自行构建使用自己的签名，发布密钥不存放在仓库内。
+
+自动发布和应用内更新见 [UPDATES.md](docs/UPDATES.md)。`android-vX.Y.Z` 标签触发 Actions，APK 签名／版本和唯一附件复核通过、Release 公开后才更新 `updates/stable.json`；普通 main 提交不通知客户端。改发布工具时运行 `node --test scripts/release.test.mjs` 和对应 APK 的 `--dry-run`，不得读取本机发布私钥。

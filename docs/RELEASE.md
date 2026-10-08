@@ -1,5 +1,15 @@
 # Android 发布文件
 
+## 0.1.3 应用内更新
+
+正式更新通道：[android-v0.1.3](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.3)，唯一安装文件为 `Yuyin-Mobile-0.1.3.apk`，versionCode 4。旧版先手动覆盖安装这一版本，之后可以自动检查新版并选择更新。安装继续需要 Android 系统确认，沿用原签名、应用 ID 和数据目录。
+
+本轮源码提交使用 `[skip ci]` 标记，先在本机验证和签名构建后手工发布，避免标签构建另一个同版本安装文件。正式发布事件会校验已有 APK 并推进清单，不需要把发布密钥上传 GitHub。实际验证与限制见 [QA-0.1.3.md](QA-0.1.3.md)，校验值和构建来源写在发布说明中。
+
+## 0.1.2（历史）
+
+后续正式标签发布、Actions 签名 secrets 配置和应用内更新流程见 [UPDATES.md](UPDATES.md)。下列内容保留历史 0.1.2 的实际来源与验证结果，不表示新功能已经发布到该安装包。
+
 0.1.2 发布页：[android-v0.1.2](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.2)。
 
 | 内容 | 文件 |
