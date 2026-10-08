@@ -14,14 +14,14 @@ TypeScript 检查、11 项业务测试、11 项隔离手机界面检查和 4 项
 
 ## 最终安装包
 
-最终包从干净的源码提交 `71bd1b71c28cedf0fe13d5c5d8f221a52bc41283` 构建，产物记录中的 `dirty` 为 `false`。后续验证记录提交仅更新文档。
+最终包从干净的源码提交 `0b4a5dde2f7bf018603526a4a3d5c2445968ad2f` 构建，产物记录中的 `dirty` 为 `false`。后续验证记录提交仅更新文档。
 
 | 项目 | 结果 |
 | --- | --- |
-| 文件 | `artifacts/Yuyin-Mobile-0.1.1.apk`，3,303,983 字节 |
+| 文件 | `artifacts/Yuyin-Mobile-0.1.1.apk`，3,304,483 字节 |
 | 应用标识与版本 | `com.yuyin.music.mobile`，versionName `0.1.1`，versionCode `2` |
 | 系统要求 | min SDK 24；target / compile SDK 36；WebView / Chrome 至少 91 |
-| APK SHA-256 | `3fe4478c762ea79360fcf58de39f520713b8a6e109e78d4f60f7e3b20e0ab2d4` |
+| APK SHA-256 | `4867c134f16138f28c372c406cd92192a036277c7698f5d676154de53ffa5184` |
 | 签名证书 SHA-256 | `068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146` |
 | 签名验证 | APK v2 通过；证书与 0.1.0 相同 |
 | 构建 | TypeScript、业务测试、Vite 生产构建、Capacitor sync、Gradle 应用单元测试和 Release 构建通过 |
@@ -31,13 +31,15 @@ TypeScript 检查、11 项业务测试、11 项隔离手机界面检查和 4 项
 
 ## 模拟器覆盖安装
 
-Android 9 / API 28 的 `emulator-5554` 上，使用 `adb install -r` 将正式 0.1.1 APK 覆盖原 0.1.0，安装成功，versionName / versionCode 为 `0.1.1` / `2`，初次安装时间保持不变。MainActivity 启动成功。
+Android 9 / API 28 的 `emulator-5554` 上，使用 `adb install -r` 将正式 0.1.1 APK 覆盖原 0.1.0，再覆盖安装上述最终兼容修复包；安装成功，versionName / versionCode 为 `0.1.1` / `2`，初次安装时间保持不变。MainActivity 启动成功，无 AndroidRuntime 崩溃；未选歌曲的播放器空态能填满内容区并居中，未触发真实播放。
 
 模拟器中已有账号会话，本轮保留其状态，不操作账号菜单、不登录或退出、不读取凭据，不清除应用数据。实际打开的发现页用于原生浅色主题验收；截图仅记录界面，账号头像区域经遮盖。该过程不算官方登录或真实 Bilibili 播放验证。
 
 本机原生截图为 `.qa/mobile-android-release-0.1.1.png`，证据为 `.qa/native-ui-0.1.1-evidence.json`。发现页和米白状态栏已视觉核对；系统 UI 标志 `0x2010` 含深色状态栏 / 导航栏图标标志。模拟器没有显示底部 Android 系统导航栏，因此该条未作视觉验收。临时竖屏尺寸已恢复到原 Physical 1920×1080，无 override。
 
 Android 7 / API 24–25 不能使用深色系统导航图标，导航栏配置为品牌绿背景；API 26 及以上通过资源覆盖使用米白背景。该兼容分支的实际显示仍需在对应旧版设备上核对。
+
+页面与播放器高度已使用 WebView 91 支持的 `vh` 单位；100% 高度布局、歌词窗口、播放队列和弹层不依赖 `dvh`。
 
 ## 验证范围
 
