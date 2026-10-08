@@ -409,9 +409,9 @@ export default function App() {
   const login = () => void run(() => mobile.login())
   const canUse = !booting && library !== null && preferences !== null
 
-  return <div className={`app ${current ? 'has-player' : ''}`}>
+  return <div className={`app ${current ? 'has-player' : ''} ${!isAndroid ? 'preview-mode' : ''} ${error || loadError ? 'has-alert' : ''}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => { setTab('search'); setAccountMenu(false) }} aria-label="余音首页"><span className="brand-icon"><AudioLines size={23} /></span><span>余音<small>让喜欢的声音，留在身边</small></span></button>
+      <button className="brand" onClick={() => { setTab('search'); setAccountMenu(false) }} aria-label="余音首页"><span className="brand-icon"><AudioLines size={23} strokeWidth={2.3} /></span><span>余音<small>YUYIN MUSIC</small></span></button>
       <div className="account-wrap">
         <button className="account-avatar" onClick={() => setAccountMenu(!accountMenu)} aria-label="账号菜单" aria-expanded={accountMenu}>
           <Avatar url={account.loggedIn ? account.account.avatar : undefined} label={account.loggedIn ? account.account.username : ''} />
@@ -432,7 +432,7 @@ export default function App() {
 
     {booting ? <main className="loading-screen"><LoaderCircle className="spin" size={28} /><p>正在读取你的音乐库…</p></main> : isAndroid && !account.loggedIn ?
       <main className="login-screen">
-        <div className="login-art"><AudioLines size={66} /><span className="orbit orbit-one" /><span className="orbit orbit-two" /></div>
+        <div className="login-art" aria-hidden="true"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={25} /><span>YUYIN MUSIC</span></div></div></div>
         <span className="eyebrow">WELCOME TO YUYIN</span><h1>登录，开始听见喜欢</h1><p>使用你的 Bilibili 账号搜索音乐，<br />把收藏夹里的好声音带到这里。</p>
         <button className="primary-button wide" onClick={login}><LogIn size={19} />登录 Bilibili<ArrowRight size={19} /></button>
         <button className="text-button" onClick={() => void checkAccount()} disabled={accountChecking}>{accountChecking ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}我已登录，重新检查</button>
@@ -440,14 +440,14 @@ export default function App() {
         <span className="login-note">登录在 Bilibili 官方页面完成<br />你的账号与音乐库保存在这台手机上</span>
       </main> : <main className={`content ${tab === 'player' ? 'player-content' : ''} ${tab === 'player' && showTiming ? 'timing-visible' : ''}`}>
       {tab === 'search' && <>
-        <div className="page-intro"><span className="eyebrow">FIND YOUR SOUND</span><h1>今天，想听什么？</h1><p>从一首歌开始，留一点时间给自己。</p></div>
+        <div className="page-intro"><span className="eyebrow">YOUR EVERYDAY SOUNDTRACK</span><h1>发现音乐<span className="heading-dot" aria-hidden="true">.</span></h1><p>让熟悉的旋律，遇见今天的心情。</p></div>
         <form className="search-form" onSubmit={event => { event.preventDefault(); void searchSongs(query) }}>
           <Search size={21} /><input aria-label="搜索歌曲或歌手" placeholder="搜索歌曲、歌手或视频" value={query} onChange={event => setQuery(event.target.value)} maxLength={100} enterKeyHint="search" />
           {query && <button type="button" className="icon-button clear-query" aria-label="清空搜索" onClick={() => setQuery('')}><X size={17} /></button>}
           <button type="submit" className="search-submit" disabled={!query.trim() || searching} aria-label="搜索">{searching ? <LoaderCircle className="spin" size={19} /> : <ArrowRight size={20} />}</button>
         </form>
         {!result && !searching && !searchedQuery && <>
-          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>每一种心情<br />都有它的回声</h2><p>搜索你喜欢的声音<br />点击一首，开始播放</p></div><div className="wave-art" aria-hidden="true">{Array.from({ length: 17 }, (_, index) => <i key={index} style={{ height: `${30 + Math.sin(index * 0.78) ** 2 * 86}px` }} />)}</div></div>
+          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>把日子，听成<br />喜欢的样子。</h2><p>一首歌，一点留白。<br />搜索喜欢的声音，点击开始播放。</p></div><div className="hero-art" aria-hidden="true"><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={23} /><span>YUYIN MUSIC</span></div></div></div></div>
           <div className="section-heading"><h2>从这里开始</h2><span>随心搜索</span></div>
           <div className="suggestions">{['周杰伦', '陈奕迅', '纯音乐', '爵士乐', '雨天', '深夜耳机'].map(text => <button key={text} onClick={() => { setQuery(text); void searchSongs(text) }}>{text}<ChevronRight size={14} /></button>)}</div>
           <div className="quiet-note"><Heart size={16} /><p>喜欢的歌，点一下爱心收藏。<br />下一次打开，它们还在这里。</p></div>

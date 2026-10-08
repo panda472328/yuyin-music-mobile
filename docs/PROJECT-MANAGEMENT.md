@@ -23,7 +23,7 @@ GitHub Desktop 应分别添加上述两个本地仓库，按当前项目切换�
 
 ## 版本约定
 
-手机版本从 **0.1.0** 开始，独立于 PC 的版本号。`version.json` 为 Android 版本来源；Gradle 从中读取 `versionName`、`versionCode`。用 `node scripts/set-version.mjs 0.1.1 2` 同步更新 `version.json`、`package.json` 和锁文件，Android `versionCode` 每次可安装更新递增。更新记录和产物文件名也须匹配。
+手机版本从 **0.1.0** 开始，独立于 PC 的版本号；当前为 **0.1.1** / versionCode **2**。`version.json` 为 Android 版本来源；Gradle 从中读取 `versionName`、`versionCode`。用 `node scripts/set-version.mjs 0.1.2 3` 同步更新 `version.json`、`package.json` 和锁文件，Android `versionCode` 每次可安装更新递增。更新记录和产物文件名也须匹配。
 
 每次发布记录具体改变、已完成的验证和已知限制。使用能够说明实际改动的提交信息；给已验证的版本打标签时保留平台标识，例如 `mobile-v0.1.0`。PC 的提交或标签不会自动代表手机版已发布。
 

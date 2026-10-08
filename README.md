@@ -1,6 +1,6 @@
 # 余音手机版
 
-余音的独立 Android 项目，当前版本为 **0.1.0**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。PC 版继续位于 `D:\音乐播放器`，手机版源码、依赖和安装产物位于 `D:\音乐播放器-手机版`，两者分别管理 Git 历史。
+余音的独立 Android 项目，当前版本为 **0.1.1**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。PC 版继续位于 `D:\音乐播放器`，手机版源码、依赖和安装产物位于 `D:\音乐播放器-手机版`，两者分别管理 Git 历史。0.1.1 按 PC 版统一了米白与鼠尾草绿主题、品牌、唱片元素和歌词高亮，保留适合触屏的布局；详见 [界面规范](docs/UI-GUIDE.md)。
 
 初版已完成业务逻辑、手机界面和 Android 原生播放服务，并实际构建出 **0.1.0 签名 Release APK**。TypeScript 检查、11 项业务测试、11 项界面检查、4 项 Android 单元测试和 3 项模拟器原生测试通过。最终包已在 Android 9 模拟器安装并启动；原生存储也通过强制结束应用后重新读取验证。具体结果见 [验证记录](docs/QA.md)。真实 Bilibili 登录、实播与后台表现需要在用户手机上验收。
 
@@ -38,7 +38,7 @@ npm run build
 node scripts/verify-ui.mjs
 ```
 
-脚本默认访问 `http://127.0.0.1:5173`，可通过环境变量 `MOBILE_UI_URL` 指定开发服务地址。它使用独立浏览器上下文和纯虚构的歌曲、账号、歌词，通过测试中的请求拦截临时替换原生接口；生产代码没有模拟开关，也不读写真实账号或音乐库。11 项检查覆盖登录入口、手动播放、收藏和歌单持久化、歌词校准、队列切歌、保存失败、账号菜单与屏幕适配。结果与截图写入 `.qa/mobile-ui/`，不纳入 Git。这些检查用于界面验证，真实 Bilibili 与锁屏播放仍需在 Android 设备上测试。
+脚本默认访问 `http://127.0.0.1:5173`，可通过环境变量 `MOBILE_UI_URL` 指定开发服务地址。它使用独立浏览器上下文和纯虚构的歌曲、账号、歌词，通过测试中的请求拦截临时替换原生接口；生产代码没有模拟开关，也不读写真实账号或音乐库。11 项检查覆盖登录入口、手动播放、收藏和歌单持久化、歌词校准、队列切歌、保存失败、账号菜单与 320 / 360 像素窄屏及横屏适配。结果与截图写入 `.qa/mobile-ui/`，不纳入 Git。这些检查用于界面验证，真实 Bilibili 与锁屏播放仍需在 Android 设备上测试。
 
 Android 同步及构建入口：
 
@@ -49,14 +49,14 @@ npm run android:build
 
 构建需要可用的 Node.js、**完整 JDK 21、Android SDK Platform 36、Build-Tools 35.0.0 与 36.0.0，以及 Platform-Tools**。设备需要 **Android System WebView / Chrome 91 或以上**。通过 `JAVA_HOME` 指定 JDK，通过 `ANDROID_HOME` 指定 SDK；本机工具链的实际版本与安装结果记录在 [验证记录](docs/QA.md)。
 
-构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.0.apk`，并生成相邻的 `.sha256` 文件及 `artifacts/release.json`。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。
+构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.1.apk`，并生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.1.release.json`。`artifacts/release.json` 指向最近一次构建记录。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
 
 首次构建会在 `%LOCALAPPDATA%\YuyinMobile\signing` 保存固定的 Release 签名密钥和配置，后续升级复用同一签名。请备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。
 
 更新手机版本使用项目自己的脚本，同时递增 Android versionCode：
 
 ```powershell
-node scripts/set-version.mjs 0.1.1 2
+node scripts/set-version.mjs 0.1.2 3
 npm run android:build
 ```
 

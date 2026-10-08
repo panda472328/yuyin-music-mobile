@@ -95,6 +95,8 @@ let commit = null
 let dirty = null
 try { commit = execFileSync(process.env.YUYIN_GIT || 'git', ['rev-parse', 'HEAD'], { cwd: project, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch {}
 try { dirty = Boolean(execFileSync(process.env.YUYIN_GIT || 'git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()) } catch {}
-fs.writeFileSync(path.join(artifactDir, 'release.json'), JSON.stringify({ ...version, applicationId: 'com.yuyin.music.mobile', filename, sha256: hash, bytes: fs.statSync(apk).size, builtAt: new Date().toISOString(), commit, dirty }, null, 2))
+const releaseRecord = JSON.stringify({ ...version, applicationId: 'com.yuyin.music.mobile', filename, sha256: hash, bytes: fs.statSync(apk).size, builtAt: new Date().toISOString(), commit, dirty }, null, 2)
+fs.writeFileSync(path.join(artifactDir, `Yuyin-Mobile-${version.version}.release.json`), releaseRecord)
+fs.writeFileSync(path.join(artifactDir, 'release.json'), releaseRecord)
 console.log(`APK ready: ${apk}`)
 console.log(`SHA256: ${hash}`)

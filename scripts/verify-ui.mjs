@@ -52,7 +52,7 @@ try {
     await page.screenshot({ path: path.join(output, '01-login.png'), fullPage: true })
   })
   await page.getByRole('button', { name: '登录 Bilibili', exact: true }).click()
-  await page.getByRole('heading', { name: '今天，想听什么？' }).waitFor()
+  await page.getByRole('heading', { name: '发现音乐', exact: true }).waitFor()
   await page.screenshot({ path: path.join(output, '02-search-home.png'), fullPage: true })
   await check('search is explicit and never autoplays', async () => {
     await page.getByRole('textbox', { name: '搜索歌曲或歌手' }).fill('测试歌曲 A')
@@ -69,6 +69,7 @@ try {
   await check('playlist create and add song persist', async () => {
     await page.getByRole('button', { name: '音乐库', exact: true }).click()
     await page.getByRole('button', { name: '新建歌单', exact: true }).click()
+    await page.screenshot({ path: path.join(output, '03a-playlist-sheet.png'), fullPage: true })
     await page.getByRole('textbox', { name: '歌单名称' }).fill('手机测试歌单')
     await page.getByRole('button', { name: '保存歌单', exact: true }).click()
     await page.getByRole('heading', { name: '手机测试歌单', exact: true }).waitFor()
@@ -136,6 +137,7 @@ try {
   await check('account touch menu and persistent settings survive restart', async () => {
     await page.getByRole('button', { name: '账号菜单', exact: true }).click()
     await page.getByRole('button', { name: '切换 / 管理账号', exact: true }).waitFor()
+    await page.screenshot({ path: path.join(output, '06a-account-menu.png'), fullPage: true })
     await page.getByRole('button', { name: '关闭账号菜单', exact: true }).click()
     await page.reload()
     await page.getByRole('button', { name: '设置', exact: true }).click()
@@ -145,12 +147,19 @@ try {
     await page.getByRole('button', { name: /我的收藏.*1 首歌曲/ }).click()
     await page.getByRole('button', { name: '取消收藏 测试歌曲 A', exact: true }).waitFor()
   })
-  await check('360 px and landscape layouts do not overflow horizontally', async () => {
-    for (const viewport of [{width:360,height:800},{width:844,height:390}]) {
+  await check('320 / 360 px and landscape layouts do not overflow horizontally', async () => {
+    for (const viewport of [{width:320,height:740},{width:360,height:800},{width:844,height:390}]) {
       await page.setViewportSize(viewport)
       await page.getByRole('button', { name: '发现', exact: true }).click()
       await assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Horizontal overflow at ${viewport.width}`)
       await page.screenshot({path:path.join(output, `07-layout-${viewport.width}.png`),fullPage:viewport.height>600})
+    }
+    await page.reload()
+    await page.getByRole('heading', { name: '发现音乐', exact: true }).waitFor()
+    for (const viewport of [{width:320,height:740},{width:360,height:800},{width:844,height:390}]) {
+      await page.setViewportSize(viewport)
+      await assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Home horizontal overflow at ${viewport.width}`)
+      await page.screenshot({path:path.join(output, `08-home-${viewport.width}.png`),fullPage:viewport.height>600})
     }
   })
   await assert(!errors.length, `Page errors: ${errors.join('; ')}`)
