@@ -2,7 +2,7 @@
 
 余音的独立 Android 项目，当前版本为 **0.1.0**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。PC 版继续位于 `D:\音乐播放器`，手机版源码、依赖和安装产物位于 `D:\音乐播放器-手机版`，两者分别管理 Git 历史。
 
-初版已完成业务逻辑、手机界面和 Android 原生播放服务。TypeScript 检查、11 项业务测试和 11 项界面检查通过。实际 APK 构建结果及设备记录见 [验证记录](docs/QA.md)；真实 Bilibili 登录、实播、锁屏和后台表现仍需设备验证。
+初版已完成业务逻辑、手机界面和 Android 原生播放服务，并实际构建出 **0.1.0 签名 Release APK**。TypeScript 检查、11 项业务测试、11 项界面检查、4 项 Android 单元测试和 3 项模拟器原生测试通过。最终包已在 Android 9 模拟器安装并启动；原生存储也通过强制结束应用后重新读取验证。具体结果见 [验证记录](docs/QA.md)。真实 Bilibili 登录、实播与后台表现需要在用户手机上验收。
 
 ## 已实现的功能
 
@@ -12,7 +12,7 @@
 - 收藏、歌单创建与编辑、播放历史；导入当前 Bilibili 账号的收藏夹为本地歌单，再次导入可合并新歌曲。
 - **默认读取 Bilibili 已有字幕**，标注 AI 或 UP 主来源；可切换 LRCLIB 搜索歌词。没有字幕的视频会显示缺失状态，不会伪造歌词。
 - 跟随实际播放时间显示歌词；按歌曲和歌词来源分别保存同步偏移，支持点选正在听到的一句进行校准。
-- Android 前台播放服务、媒体通知和锁屏媒体控制已接入；来电或其他音频造成的焦点变化交由原生服务处理。稳定性以实机测试结果为准。
+- Android 前台播放服务、媒体通知和锁屏媒体控制已接入。原生层在播放前检查音频焦点，HTML5 音频的持续焦点管理由 Chromium / WebView 负责；后台表现以设备验证结果为准。
 
 收藏、歌单、历史、队列、音量、播放模式、歌词来源和歌词校准值保存在 Android 应用私有存储中。界面在收到保存成功的确认后更新；保存失败会提示原因，损坏的原记录会保留。Bilibili 登录信息保留在手机自己的 WebView 会话中，不导入 PC 登录凭据。
 
@@ -47,7 +47,20 @@ npm run android:sync
 npm run android:build
 ```
 
-构建需要可用的 Node.js、JDK 和 Android SDK。本机工具链、APK 的实际路径、签名类型及安装验证结果由构建流程记录在 [验证记录](docs/QA.md)，不要依据源码版本号假定安装包已产出。
+构建需要可用的 Node.js、**完整 JDK 21、Android SDK Platform 36、Build-Tools 35.0.0 与 36.0.0，以及 Platform-Tools**。设备需要 **Android System WebView / Chrome 91 或以上**。通过 `JAVA_HOME` 指定 JDK，通过 `ANDROID_HOME` 指定 SDK；本机工具链的实际版本与安装结果记录在 [验证记录](docs/QA.md)。
+
+构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.0.apk`，并生成相邻的 `.sha256` 文件及 `artifacts/release.json`。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。
+
+首次构建会在 `%LOCALAPPDATA%\YuyinMobile\signing` 保存固定的 Release 签名密钥和配置，后续升级复用同一签名。请备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。
+
+更新手机版本使用项目自己的脚本，同时递增 Android versionCode：
+
+```powershell
+node scripts/set-version.mjs 0.1.1 2
+npm run android:build
+```
+
+该脚本同步 `package.json`、`package-lock.json` 和 `version.json`，构建时据此设置 Android 版本及产物文件名。更新后同步修改 `CHANGELOG.md`。
 
 ## 项目管理
 
@@ -61,4 +74,4 @@ npm run android:build
 | 验证记录、管理约定 | `docs/` |
 | 本机临时验证材料 | `.qa/`，不纳入 Git |
 
-详见 [更新记录](CHANGELOG.md)、[验证记录](docs/QA.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。手机项目独立提交；仓库保持私有，公开发布需按用户要求另行处理。
+手机版已同步到独立的私有仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。详见 [更新记录](CHANGELOG.md)、[验证记录](docs/QA.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。手机项目独立提交；公开发布需按用户要求另行处理。

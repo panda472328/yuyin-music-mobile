@@ -20,7 +20,7 @@ final class NativePolicy {
         ArrayList<String> selected = new ArrayList<>();
         for (String token : cookies.split(";")) {
             String value = token.trim(); String name = value.split("=", 2)[0];
-            if (name.equals("SESSDATA") || name.equals("DedeUserID") || name.equals("bili_jct")) selected.add(value);
+            if (name.equals("SESSDATA") || name.equals("DedeUserID") || name.equals("DedeUserID__ckMd5") || name.equals("bili_jct")) selected.add(value);
         }
         Collections.sort(selected);
         return String.join(";", selected);

@@ -179,7 +179,6 @@ public class ControlledPlaybackTest {
             try {
                 await(() -> snapshot().optString("state").equals("paused"), 5000, "Transient audio focus did not pause real media");
                 assertFalse(wakeHeld());
-                assertTrue((Boolean) field("focusRegistered"));
             } finally { manager.abandonAudioFocus(temporaryFocus); }
             await(() -> snapshot().optString("state").equals("playing"), 5000, "Playback did not resume after focus returned");
             evidence.put("transientAudioFocusResume", true);

@@ -101,6 +101,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     }
 
     private void fetch(PluginCall call, URI uri, String cookies) {
+        String requestSession = NativePolicy.authenticationSignature(cookies);
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) uri.toURL().openConnection();
@@ -134,6 +135,11 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
             Map<String, List<String>> headers = connection.getHeaderFields();
             main.post(() -> {
                 if (uri.getHost().equals("api.bilibili.com")) {
+                    String currentSession = NativePolicy.authenticationSignature(CookieManager.getInstance().getCookie("https://api.bilibili.com/"));
+                    if (!requestSession.equals(currentSession)) {
+                        if (!destroyed) call.reject("Bilibili 账号已变化，请重新验证后重试。", "BILIBILI_SESSION_CHANGED");
+                        return;
+                    }
                     for (Map.Entry<String, List<String>> header : headers.entrySet()) {
                         if (header.getKey() != null && header.getKey().equalsIgnoreCase("Set-Cookie")) {
                             for (String cookie : header.getValue()) CookieManager.getInstance().setCookie("https://api.bilibili.com/", cookie);

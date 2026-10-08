@@ -289,7 +289,6 @@ public final class PlaybackService extends Service {
         if (song == null) { if (completion != null) completion.reject("请先选择歌曲。", "NO_SONG"); return; }
         if ("error".equals(state)) { play(song, completion); return; }
         rejectPending("已收到新的播放请求。", "PLAYBACK_INTERRUPTED");
-        if (!requestFocus()) { if (completion != null) completion.reject("其他应用正在使用音频，请稍后重试。", "AUDIO_FOCUS_DENIED"); return; }
         desiredPlayback = true; startAttempted = false; awaitingStart = true; error = null; errorCode = null;
         playbackSessionSignature = NativePolicy.authenticationSignature(CookieManager.getInstance().getCookie("https://api.bilibili.com/"));
         state = "loading"; loadStarted = SystemClock.elapsedRealtime(); playCompletion = completion;
@@ -396,6 +395,9 @@ public final class PlaybackService extends Service {
         }
         if (!startAttempted && snapshot.optInt("readyState") > 0) {
             if (!requestFocus()) { fail("其他应用正在使用音频，请稍后重试。", "AUDIO_FOCUS_DENIED", expectedGeneration); return; }
+            // Chromium requests its own Android audio focus when HTML5 media plays. Keeping a second
+            // native request makes that legitimate handoff look like a competing app and pauses us.
+            releaseResources();
             startAttempted = true;
             read("play", 0, null);
             return;
@@ -405,6 +407,14 @@ public final class PlaybackService extends Service {
             Completion pending = playCompletion; playCompletion = null;
             if (pending != null) pending.resolve(status());
         } else {
+            if (!awaitingStart && snapshot.optBoolean("paused")) {
+                // Follow the WebView's own focus interruption. Its transient gain may resume the same
+                // media automatically; an explicit user pause has desiredPlayback=false and stays paused.
+                state = "paused"; stalledSince = 0;
+                if (wakeLock.isHeld()) wakeLock.release();
+                publish(false);
+                return;
+            }
             state = "loading";
             if (wakeLock.isHeld()) wakeLock.release();
             if (stalledSince == 0) stalledSince = SystemClock.elapsedRealtime();
@@ -478,7 +488,7 @@ public final class PlaybackService extends Service {
         return PendingIntent.getService(this, code, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
     private Notification notification() {
-        boolean playing = desiredPlayback || "playing".equals(state);
+        boolean playing = "playing".equals(state) || (desiredPlayback && "loading".equals(state));
         Intent launch = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent content = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);

@@ -6,7 +6,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const [next, codeText] = process.argv.slice(2)
 const current = JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8'))
 const code = Number(codeText)
-if (!/^\d+\.\d+\.\d+$/.test(next || '') || !Number.isInteger(code) || code <= current.androidVersionCode) {
+if (!/^\d+\.\d+\.\d+$/.test(next || '') || !Number.isInteger(code) || code <= current.androidVersionCode || code > 2100000000) {
   throw new Error('用法：node scripts/set-version.mjs 0.1.1 2；versionCode 必须递增。')
 }
 for (const file of ['package.json', 'package-lock.json']) {

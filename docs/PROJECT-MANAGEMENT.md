@@ -23,7 +23,7 @@ GitHub Desktop 应分别添加上述两个本地仓库，按当前项目切换�
 
 ## 版本约定
 
-手机版本从 **0.1.0** 开始，独立于 PC 的版本号。`package.json` 中的手机版本、Android `versionName`、更新记录和产物文件名应在发布前检查一致；Android `versionCode` 每次可安装更新递增。
+手机版本从 **0.1.0** 开始，独立于 PC 的版本号。`version.json` 为 Android 版本来源；Gradle 从中读取 `versionName`、`versionCode`。用 `node scripts/set-version.mjs 0.1.1 2` 同步更新 `version.json`、`package.json` 和锁文件，Android `versionCode` 每次可安装更新递增。更新记录和产物文件名也须匹配。
 
 每次发布记录具体改变、已完成的验证和已知限制。使用能够说明实际改动的提交信息；给已验证的版本打标签时保留平台标识，例如 `mobile-v0.1.0`。PC 的提交或标签不会自动代表手机版已发布。
 
@@ -34,5 +34,9 @@ GitHub Desktop 应分别添加上述两个本地仓库，按当前项目切换�
 Android 音乐库和偏好设置位于该应用的私有存储中，WebView 登录会话由手机独立保存；浏览器开发预览另用独立的本地存储键。没有自动同步 PC 音乐库或 PC 登录会话的功能。
 
 签名密钥、密码、环境变量文件和真实账号凭据不进入 Git。当前 `.gitignore` 排除了 `.jks`、`.keystore`、`.p12`、`signing.properties` 和 `.env` 文件。构建记录可以写签名类型与产物校验值，不记录私钥或 Cookie。
+
+本机稳定的手机版发布签名位于 `%LOCALAPPDATA%\YuyinMobile\signing`，每次构建复用同一签名；需要迁移电脑时应私下备份整个签名目录，不上传到仓库。丢失签名后生成的新安装包不能覆盖原版本。可用 `YUYIN_ANDROID_KEYSTORE`、`YUYIN_ANDROID_KEY_PASSWORD`、`YUYIN_ANDROID_KEY_ALIAS` 指定外部签名。
+
+Windows 中文工作目录通过 `%LOCALAPPDATA%\YuyinMobile\workspace` 的目录联接参与 Gradle 构建，实际文件仍保存在手机版目录，不复制或移动源码。这样避免 JDK 的参数文件编码问题。工具链及缓存保存在独立的 `%LOCALAPPDATA%\YuyinMobile\toolchain`，不进入手机或 PC 仓库。
 
 APK 构建、签名和设备安装的具体结果写入 [验证记录](QA.md)，只记录实际执行过的项目。
