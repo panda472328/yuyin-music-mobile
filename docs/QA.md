@@ -1,6 +1,6 @@
 # 0.1.0 验证记录
 
-验证日期：2026-10-08。手机版测试位于独立目录 `D:\音乐播放器-手机版`；下列结果来自业务测试和隔离的网页界面检查，未使用用户的真实 Bilibili 凭据，也不代表真实设备上的后台播放已通过。
+验证日期：2026-10-08。手机版测试位于独立目录 `D:\音乐播放器-手机版`。已完成业务、网页界面、Android 单元和模拟器原生验证，以及签名 Release APK 的安装启动。原生播放测试使用本地受控音频，未使用真实 Bilibili 凭据；真实 Bilibili 网络播放和用户手机上的表现仍待验收。
 
 ## 已通过的检查
 
@@ -41,25 +41,36 @@ TypeScript `--noEmit` 检查通过。`tests/mobile.test.ts` 中 **11 项业务�
 - 网络请求限定在官方接口及指定字幕 CDN，Bilibili Cookie 只随 Bilibili API 请求发送；远程登录和音源 WebView 不暴露本地原生桥接。
 - 登录会话变化使待处理的业务请求失效；播放服务在界面退出后仍检查原生会话变化，发生变化时停止旧音源。
 - 初版音源和字幕对应视频第一分 P，切到其他分 P 会停止并提示重新选择，防止沿用不匹配的字幕。
-- 临时音频焦点丢失保留恢复机会，旧焦点回调不会改变新的播放请求。
+- 播放服务先检查音频焦点许可，随后释放自身请求，由 Chromium / WebView 管理 HTML5 音频的持续焦点，避免同一进程内的焦点争抢。受控原生测试确认外部临时中断会暂停，焦点返回后实际恢复播放。
 - 隐藏音源视图由服务持有，界面退出或重建时解除旧 Activity 的视图连接。
 
 这部分为源码审查结果。Android 编译、原生测试、安装启动和系统媒体行为以以下实际执行记录为准。
 
 ## APK 构建记录
 
-以下信息由完成构建的负责人填写；未填写即尚无验证结论。
+最终构建从干净的源码提交 `8635d02c56d9b1e30c15b1bb590d3a81524e85ad` 完成，`artifacts/release.json` 中 `dirty` 为 `false`。后续验证记录提交只更新文档，不改变 APK 源码。构建日志保存在本机 `.qa/android-build.log`。
 
 | 项目 | 实际结果 |
 | --- | --- |
-| APK 构建 | 待填写 |
-| Android 原生单元测试 | 待填写 |
-| 安装包路径与文件名 | 待填写 |
-| 产物版本、Android versionCode | 待填写 |
-| 构建类型与签名类型 | 待填写 |
-| APK SHA-256 | 待填写 |
-| 本机 Node / JDK / Android SDK 版本 | 待填写 |
-| 模拟器或设备安装与启动 | 待填写 |
+| APK 构建 | TypeScript、11 项业务测试、Vite 生产构建、Capacitor sync 通过；Gradle `:app:testDebugUnitTest :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest` 成功 |
+| Android 原生单元测试 | 4 项 JUnit 测试通过 |
+| 安装包路径与文件名 | `D:\音乐播放器-手机版\artifacts\Yuyin-Mobile-0.1.0.apk`，3,303,055 字节 |
+| 产物版本、Android versionCode | `0.1.0` / `1`；包名 `com.yuyin.music.mobile`；min SDK 24、target / compile SDK 36 |
+| 构建类型与签名类型 | Release；稳定的 RSA 3072 位发布密钥；`apksigner verify` 确认 APK v2 签名通过；正式包不含 debug 测试宿主 |
+| APK SHA-256 | `5239aaaa7f739aedd41b308e76867d11393d47b26b315908b8c38f21cb7c2a65` |
+| 签名证书 SHA-256 | `068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146` |
+| 本机工具链 | Node 24.19.0、npm 12.2.0、JDK 21.0.2、AGP 8.13.0、Gradle 8.14.3；SDK Platform 36 revision 2、Build-Tools 35.0.0 / 36.0.0、Platform-Tools 37.0.1 |
+| 模拟器安装与启动 | Android 9 / API 28 x86_64，WebView 91，`emulator-5554`；最终 Release APK 安装及同签名覆盖安装成功，启动状态 `ok`，登录页显示正常 |
+
+## Android 模拟器原生验证
+
+3 项 instrumentation 测试通过：`YuyinNativeContractTest` 2 项和 `ControlledPlaybackTest` 1 项完整媒体流程。受控测试在真实 Android WebView 中播放本地生成的 WAV，拦截所有 HTTP 请求，不访问真实 Bilibili 音视频。
+
+测试覆盖旧播放请求失效、真实暂停 / 恢复 / 跳转、外部临时音频焦点中断与恢复、音源视图重挂、通知和 MediaSession 状态、播放结束和唤醒锁释放，并阻止原视频页自行播放下一条。切到系统桌面后媒体时钟前进 **4.118 秒**，熄屏后前进 **4.389 秒**。用户音乐库和设置在测试前后完全一致。详细步骤与范围见 [Android 原生验证](ANDROID-TESTING.md)，本机证据为 `.qa/native-android9-playback-evidence.json`。
+
+另一次独立原生存储验证通过实际 Capacitor `writeStore` / `readStore` 写入虚构数据，确认保存成功后强制结束应用进程并重新启动；收藏、歌单、历史、队列、音量、播放模式、歌词来源和校准偏移的 JSON 内容精确一致。证据位于 `.qa/native-store-restart-evidence.json`。这验证 Android SharedPreferences 的落盘和进程重启恢复，不代表已有真实 Bilibili 账号数据通过验收。
+
+测试结束后已卸载模拟器中的 debug / instrumentation APK，移除虚构数据，并恢复临时屏幕尺寸。目前只安装正式 Release APK，保持未登录状态。测试没有读取或修改 PC 版的音乐库或登录凭据。
 
 ## 真实设备验证
 
@@ -78,4 +89,4 @@ TypeScript `--noEmit` 检查通过。`tests/mobile.test.ts` 中 **11 项业务�
 | 界面被关闭或重建后的播放状态恢复 | 待实机验证 |
 | 系统省电限制下的长时间播放 | 待实机验证 |
 
-当前可以确认业务和界面实现通过上述自动检查；后台音源、锁屏续播及不同手机系统的限制仍是初版设备验证的重点。
+当前可以确认业务与界面检查通过，Release APK 可安装启动，受控 Android 媒体在短时后台 / 熄屏场景下继续播放，原生音乐库和设置在进程重启后保留。真实 Bilibili 登录与播放、长时间锁屏、不同手机系统的省电限制仍需在用户手机上验收。
