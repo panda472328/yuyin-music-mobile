@@ -7,6 +7,8 @@ export interface MobileUpdate {
   releaseNotesUrl: string
   notes: string
   publishedAt: string
+  provider?: 'github' | 'gitee'
+  source?: { releaseId: number; attachmentId: number; filename: string }
 }
 export interface MobileUpdateState {
   state: UpdatePhase
@@ -21,6 +23,9 @@ export interface MobileUpdateState {
 const phases: UpdatePhase[] = ['idle', 'checking', 'upToDate', 'available', 'downloading', 'ready', 'permissionRequired', 'installing', 'error']
 const versionPattern = /^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/
 const repo = 'https://github.com/panda472328/yuyin-music-mobile/releases'
+const domesticRepo = 'https://gitee.com/openmusic/openmusic-mobile/releases'
+const domesticApi = 'https://gitee.com/api/v5/repos/openmusic/openmusic-mobile'
+const positiveId = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 2147483647
 export const updateCheckInterval = 6 * 60 * 60 * 1000
 export function normalizeUpdateState(input: unknown): MobileUpdateState {
   const value = input as Partial<MobileUpdateState> | null
@@ -29,9 +34,16 @@ export function normalizeUpdateState(input: unknown): MobileUpdateState {
   const result: MobileUpdateState = { state: value.state as UpdatePhase, currentVersion: value.currentVersion, currentVersionCode: value.currentVersionCode! }
   if (value.update) {
     const update = value.update
+    const domestic = update.provider === 'gitee'
+    const source = update.source
+    const validSource = domestic ? !!source && positiveId(source.releaseId) && positiveId(source.attachmentId) && source.filename === `Yuyin-Mobile-${update.version}.apk`
+      && update.url === `${domesticApi}/releases/${source.releaseId}/attach_files/${source.attachmentId}/download`
+      && update.releaseNotesUrl === `${domesticRepo}/tag/android-v${update.version}`
+      : (update.provider === undefined || update.provider === 'github') && source === undefined
+      && update.url === `${repo}/download/android-v${update.version}/Yuyin-Mobile-${update.version}.apk`
+      && update.releaseNotesUrl === `${repo}/tag/android-v${update.version}`
     if (!versionPattern.test(update.version) || update.version.length > 32 || !Number.isSafeInteger(update.versionCode) || update.versionCode <= result.currentVersionCode
-      || update.url !== `${repo}/download/android-v${update.version}/Yuyin-Mobile-${update.version}.apk`
-      || update.releaseNotesUrl !== `${repo}/tag/android-v${update.version}` || !Number.isSafeInteger(update.size) || update.size < 1 || update.size > 200000000
+      || !validSource || !Number.isSafeInteger(update.size) || update.size < 1 || update.size > 200000000
       || typeof update.notes !== 'string' || update.notes.length > 8000 || typeof update.publishedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(update.publishedAt)) throw new Error('更新信息格式异常。请稍后重新检查。')
     result.update = { ...update }
   }

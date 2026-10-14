@@ -10,6 +10,18 @@ test('trusted update states keep current identity and only a newer Android relea
   assert.equal(normalizeUpdateState({ ...available, state: 'downloading', progress: 47 }).progress, 47)
   for (const versionCode of [3, 2, 4.5, Infinity]) assert.throws(() => normalizeUpdateState({ ...available, update: { ...available.update, versionCode } }))
 })
+test('domestic states bind the mobile repository, official attachment IDs and matching release notes', () => {
+  const update = { ...available.update, provider: 'gitee', source: { releaseId: 12345, attachmentId: 67890, filename: 'Yuyin-Mobile-0.1.3.apk' },
+    url: 'https://gitee.com/api/v5/repos/openmusic/openmusic-mobile/releases/12345/attach_files/67890/download',
+    releaseNotesUrl: 'https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.3' }
+  assert.deepEqual(normalizeUpdateState({ ...available, update }).update, update)
+  for (const source of [undefined, { ...update.source, releaseId: '12345' }, { ...update.source, attachmentId: 0 }, { ...update.source, releaseId: 2147483648 }, { ...update.source, filename: 'Yuyin-Mobile-0.1.4.apk' }])
+    assert.throws(() => normalizeUpdateState({ ...available, update: { ...update, source } }))
+  for (const url of [update.url + '?access_token=synthetic', update.url.replace('openmusic-mobile', 'openmusic'), update.url.replace('12345', '12346'), 'https://foruda.gitee.com/attach_file/123/Yuyin-Mobile-0.1.3.apk'])
+    assert.throws(() => normalizeUpdateState({ ...available, update: { ...update, url } }))
+  assert.throws(() => normalizeUpdateState({ ...available, update: { ...update, provider: 'github' } }))
+  assert.throws(() => normalizeUpdateState({ ...available, update: { ...update, releaseNotesUrl: available.update.releaseNotesUrl } }))
+})
 test('update bridge response cannot offer foreign URLs, mismatched filenames or unbounded data', () => {
   for (const url of ['https://attacker.example/app.apk', available.update.url + '?x=1', available.update.url.replace('android-v0.1.3', 'android-v0.1.4')]) assert.throws(() => normalizeUpdateState({ ...available, update: { ...available.update, url } }))
   assert.throws(() => normalizeUpdateState({ ...available, update: { ...available.update, releaseNotesUrl: 'javascript:alert(1)' } }))

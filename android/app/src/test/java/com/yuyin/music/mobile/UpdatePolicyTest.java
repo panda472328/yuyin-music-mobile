@@ -27,4 +27,24 @@ public class UpdatePolicyTest {
         assertFalse(UpdatePolicy.sameSignatures(new String[] {"a"}, new String[] {"different"}));
         assertFalse(UpdatePolicy.sameSignatures(new String[] {}, new String[] {}));
     }
+    @Test public void domesticRequestsAreLimitedToMobileContentsAndNumericAttachmentIds() throws Exception {
+        assertNotNull(UpdatePolicy.requestUri(UpdatePolicy.DOMESTIC_MANIFEST_URL, false));
+        assertNotNull(UpdatePolicy.requestUri(UpdatePolicy.domesticArtifactUrl(12345, 67890), false));
+        for (String address : new String[] {UpdatePolicy.DOMESTIC_MANIFEST_URL.replace("openmusic-mobile", "openmusic"), UpdatePolicy.DOMESTIC_MANIFEST_URL.replace("ref=main", "ref=other"), UpdatePolicy.domesticArtifactUrl(12345, 67890) + "?access_token=synthetic", UpdatePolicy.GITEE_API + "/releases/0/attach_files/1/download", UpdatePolicy.GITEE_API + "/releases/2147483648/attach_files/1/download"}) {
+            try { UpdatePolicy.requestUri(address, false); fail(address); } catch (java.net.URISyntaxException expected) {}
+        }
+        assertTrue(UpdatePolicy.compareVersions("0.1.10", "0.1.9") > 0);
+        assertEquals(0, UpdatePolicy.compareVersions("0.1.4", "0.1.4"));
+    }
+    @Test public void forudaIsAllowedOnlyAfterTheOfficialApiWithTheExactFilename() throws Exception {
+        String origin = UpdatePolicy.domesticArtifactUrl(12345, 67890), filename = UpdatePolicy.filename("0.1.4");
+        String redirect = "https://foruda.gitee.com/attach_file/1662036200660558629/" + filename + "?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&ts=1791780000&attname=" + filename;
+        assertNotNull(UpdatePolicy.domesticRedirect(redirect, origin, filename));
+        assertNotNull(UpdatePolicy.domesticRedirect(redirect.replace("/Yuyin-Mobile", "/yuyin-mobile"), origin, filename));
+        for (String address : new String[] {redirect.replace("https:", "http:"), redirect.replace("foruda.gitee.com", "foruda.gitee.com.evil.example"), redirect.replace("foruda.gitee.com", "user:pass@foruda.gitee.com"), redirect.replace("foruda.gitee.com", "foruda.gitee.com:443"), redirect.replace("/attach_file/", "/other/"), redirect.replace("0.1.4", "0.1.5"), redirect + "&access_token=synthetic", redirect + "&token=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", redirect.replace("ts=1791780000", "ts=invalid"), redirect + "#fragment", redirect.replace("attname=Yuyin", "attname=yuyin")}) {
+            try { UpdatePolicy.domesticRedirect(address, origin, filename); fail("Unexpected redirect"); } catch (java.net.URISyntaxException expected) {}
+        }
+        try { UpdatePolicy.requestUri(redirect, true); fail("CDN cannot be an initial URL"); } catch (java.net.URISyntaxException expected) {}
+        try { UpdatePolicy.domesticRedirect(redirect, UpdatePolicy.artifactUrl("0.1.4"), filename); fail("Foreign origin"); } catch (java.net.URISyntaxException expected) {}
+    }
 }

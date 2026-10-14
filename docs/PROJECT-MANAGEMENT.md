@@ -9,7 +9,7 @@ PC 版与手机版使用独立工作目录和独立 Git 仓库，两个仓库可
 
 GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认当前项目。不把 PC 仓库覆盖成手机版，也不把手机目录放成 PC 仓库中的嵌套工程。共同视觉规范的变更在两个仓库分别修改、验证和提交。
 
-展示品牌统一为 `open音乐`，旧的 Yuyin / yuyin 技术名、包名、存储键、产物名与仓库地址保留。当前手机源码已同步 PC 0.5.3，仍处于未发布阶段，公开 APK 为 0.1.3。手机版独立 Gitee 仓库为 [openmusic/openmusic-mobile](https://gitee.com/openmusic/openmusic-mobile)，对应 `gitee` 远程；`origin` 保留手机版 GitHub 仓库。现有 `updates/stable.json` 和原生 APK 下载策略仍使用手机版 GitHub 仓库；PC 的 Gitee 地址不能用于 Android APK。
+展示品牌统一为 `open音乐`，旧的 Yuyin / yuyin 技术名、包名、存储键、产物名与仓库地址保留。当前手机源码已同步 PC 0.5.3 的主要搜索、主题、评论和 MV 功能，仍处于未发布阶段，公开 APK 为 0.1.3。手机版独立 Gitee 仓库为 [openmusic/openmusic-mobile](https://gitee.com/openmusic/openmusic-mobile)，对应 `gitee` 远程；`origin` 保留手机版 GitHub 仓库。当前源码加入 Gitee / GitHub 双源更新，`updates/stable.json` 继续服务旧 GitHub 客户端，独立 `updates/domestic.json` 必须在 Gitee 同一正式 APK 完整校验后生成和推送；不能提前写入占位附件 ID，也不能把 PC 的 Gitee 地址用于 Android APK。尚未实现的 PC 功能见 README，不将核心同步描述为全部移植。
 
 ## 目录约定
 

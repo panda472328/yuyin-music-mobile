@@ -29,12 +29,18 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /** Checks and stages a signed release without exposing arbitrary native URLs to the WebView. */
 public final class UpdateManager {
     public static final String MANIFEST_URL = UpdatePolicy.MANIFEST_URL;
-    private static final long MAX_MANIFEST_BYTES = 256 * 1024;
+    private static final long MAX_MANIFEST_BYTES = 64 * 1024;
+    private static final long MAX_CONTENTS_BYTES = 128 * 1024;
+    private static final long CHECK_BUDGET_MS = 12000;
     private static final long MAX_APK_BYTES = UpdatePolicy.MAX_APK_BYTES;
     private static final int CONNECT_TIMEOUT_MS = 10000;
     private static final int READ_TIMEOUT_MS = 30000;
@@ -56,6 +62,7 @@ public final class UpdateManager {
     private long installGeneration;
     private volatile boolean cancelled;
     private volatile HttpURLConnection activeConnection;
+    private final Set<HttpURLConnection> manifestConnections = ConcurrentHashMap.newKeySet();
 
     public UpdateManager(Context context, Handler main, ExecutorService io, Listener listener) {
         this.context = context.getApplicationContext();
@@ -72,6 +79,7 @@ public final class UpdateManager {
     public void destroy() {
         synchronized (lock) { destroyed = true; cancelled = true; installGeneration++; }
         if (activeConnection != null) activeConnection.disconnect();
+        for (HttpURLConnection connection : manifestConnections) connection.disconnect();
     }
 
     public void check(Consumer<JSObject> completion) {
@@ -90,6 +98,8 @@ public final class UpdateManager {
             try {
                 UpdateManifest manifest = fetchManifest();
                 long installed = installedVersionCode();
+                synchronized (lock) { manifest = UpdateManifest.select(manifest, available); }
+                if (manifest.versionCode > installed && UpdatePolicy.compareVersions(manifest.version, installedVersionName()) <= 0) throw new UpdateException("更新版本号未递增，已停止更新。", "UPDATE_SOURCE_CONFLICT");
                 if (manifest.versionCode <= installed) {
                     synchronized (lock) { available = null; }
                     result = baseState("upToDate");
@@ -100,6 +110,7 @@ public final class UpdateManager {
                     result = availableState(manifest, installed);
                 }
             } catch (UpdateException failure) {
+                if ("UPDATE_SOURCE_CONFLICT".equals(failure.code)) synchronized (lock) { available = null; }
                 result = errorState(failure.getMessage(), failure.code);
             } catch (Exception failure) {
                 result = errorState("检查更新失败，请稍后重试。", "UPDATE_CHECK_FAILED");
@@ -127,15 +138,14 @@ public final class UpdateManager {
             JSObject result;
             try {
                 File apk = downloadAndVerify(manifest);
-                synchronized (lock) { stagedApk = apk; }
-                result = readyState(manifest, apk);
+                synchronized (lock) { stagedApk = apk; result = readyState(available, apk); }
             } catch (UpdateException failure) {
                 result = errorState(failure.getMessage(), failure.code);
             } catch (Exception failure) {
                 result = errorState("下载更新失败，请重试。", "UPDATE_DOWNLOAD_FAILED");
             }
             synchronized (lock) {
-                if (cancelled) result = availableState(manifest, installedVersionCode());
+                if (cancelled) result = availableState(available, installedVersionCode());
                 downloadPending = false;
                 publish(result);
             }
@@ -192,7 +202,7 @@ public final class UpdateManager {
                 permission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(permission);
                 JSObject result = availableState(manifest, installedVersionCode()); result.put("state", "permissionRequired");
-                result.put("message", "请允许余音安装更新，然后返回应用继续安装。");
+                result.put("message", "请允许 open音乐安装更新，然后返回应用继续安装。");
                 publish(result);
                 return result;
             }
@@ -213,16 +223,55 @@ public final class UpdateManager {
     }
 
     private UpdateManifest fetchManifest() throws Exception {
-        HttpURLConnection connection = open(MANIFEST_URL, false);
+        // Separate workers and one bounded wait: an inaccessible mirror cannot
+        // consume the other source's connection budget or hide a newer release.
+        ExecutorService sources = Executors.newFixedThreadPool(2);
+        long deadline = SystemClock.elapsedRealtime() + CHECK_BUDGET_MS;
+        Future<UpdateManifest> domestic = sources.submit(() -> fetchSource(UpdatePolicy.DOMESTIC_MANIFEST_URL, deadline));
+        Future<UpdateManifest> github = sources.submit(() -> fetchSource(MANIFEST_URL, deadline));
+        try {
+            UpdateManifest a = awaitSource(domestic, deadline), b = awaitSource(github, deadline);
+            if (a == null && b == null) throw new UpdateException("两个更新源暂时都不可用，请稍后重试。", "UPDATE_CHECK_FAILED");
+            return UpdateManifest.select(a, b);
+        } finally {
+            domestic.cancel(true); github.cancel(true); sources.shutdownNow();
+            for (HttpURLConnection connection : manifestConnections) connection.disconnect();
+        }
+    }
+
+    private static UpdateManifest awaitSource(Future<UpdateManifest> task, long deadline) {
+        try {
+            if (task.isDone()) return task.get();
+            return task.get(Math.max(1, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS);
+        } catch (Exception unavailable) { return null; }
+    }
+
+    private UpdateManifest fetchSource(String url, long deadline) throws Exception {
+        HttpURLConnection connection = open(url, false, null, deadline);
         try {
             int status = connection.getResponseCode();
             if (status != 200) throw new UpdateException("更新服务返回 HTTP " + status + "。", "UPDATE_HTTP_ERROR");
-            byte[] data = readLimited(connection.getInputStream(), MAX_MANIFEST_BYTES, 10000);
-            return UpdateManifest.parse(new String(data, java.nio.charset.StandardCharsets.UTF_8));
-        } finally { connection.disconnect(); }
+            boolean domestic = UpdatePolicy.DOMESTIC_MANIFEST_URL.equals(url);
+            byte[] data = readLimited(connection, domestic ? MAX_CONTENTS_BYTES : MAX_MANIFEST_BYTES, deadline);
+            String body = strictUtf8(data);
+            return domestic ? UpdateManifest.parseDomesticContents(body) : UpdateManifest.parse(body);
+        } finally { connection.disconnect(); manifestConnections.remove(connection); }
     }
 
     private File downloadAndVerify(UpdateManifest manifest) throws Exception {
+        try { return downloadFromSource(manifest); }
+        catch (Exception failure) {
+            if (cancelled || destroyed || !"gitee".equals(manifest.provider)) throw failure;
+            // The fixed GitHub URL must match the selected domestic bytes and
+            // version, then pass the same package and installed-signature checks.
+            UpdateManifest fallback = manifest.githubFallback();
+            synchronized (lock) { available = fallback; }
+            JSObject next = downloadState(fallback, 0); next.put("message", "国内下载暂不可用，正在尝试 GitHub 备用源。"); publish(next);
+            return downloadFromSource(fallback);
+        }
+    }
+
+    private File downloadFromSource(UpdateManifest manifest) throws Exception {
         File directory = new File(context.getCacheDir(), "updates");
         if (!directory.exists() && !directory.mkdirs()) throw new UpdateException("无法创建更新缓存目录。", "UPDATE_STORAGE_FAILED");
         // Android archive signature parsing expects an .apk file, including during verification.
@@ -234,7 +283,8 @@ public final class UpdateManager {
         }
         if (temporary.exists() && !temporary.delete()) throw new UpdateException("无法清理旧的更新下载。", "UPDATE_STORAGE_FAILED");
         if (cancelled) throw new UpdateException("下载已取消。", "UPDATE_CANCELLED");
-        HttpURLConnection connection = open(manifest.url, true);
+        long deadline = SystemClock.elapsedRealtime() + ("gitee".equals(manifest.provider) ? 2 * 60 * 1000L : 15 * 60 * 1000L);
+        HttpURLConnection connection = open(manifest.url, true, UpdatePolicy.filename(manifest.version), deadline);
         activeConnection = connection;
         try {
             int status = connection.getResponseCode();
@@ -246,12 +296,14 @@ public final class UpdateManager {
                 byte[] buffer = new byte[64 * 1024];
                 long total = 0;
                 int count;
-                long started = SystemClock.elapsedRealtime();
                 int previousProgress = -1;
-                while ((count = input.read(buffer)) != -1) {
+                while (true) {
                     if (cancelled) throw new UpdateException("下载已取消。", "UPDATE_CANCELLED");
+                    connection.setReadTimeout(remainingTimeout(deadline, READ_TIMEOUT_MS));
+                    count = input.read(buffer);
+                    if (count == -1) break;
                     total += count;
-                    if (total > MAX_APK_BYTES || total > manifest.size || SystemClock.elapsedRealtime() - started > 15 * 60 * 1000L) {
+                    if (total > MAX_APK_BYTES || total > manifest.size || SystemClock.elapsedRealtime() > deadline) {
                         throw new UpdateException("更新文件超出允许大小或下载超时。", "UPDATE_DOWNLOAD_LIMIT");
                     }
                     output.write(buffer, 0, count);
@@ -273,7 +325,7 @@ public final class UpdateManager {
         int flags = PackageManager.GET_SIGNATURES | (Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : 0);
         PackageManager manager = context.getPackageManager();
         PackageInfo info = manager.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
-        if (info == null || !context.getPackageName().equals(info.packageName)) throw new UpdateException("更新包不是余音 Android 版本。", "UPDATE_PACKAGE_MISMATCH");
+        if (info == null || !context.getPackageName().equals(info.packageName)) throw new UpdateException("更新包不是 open音乐 Android 版本。", "UPDATE_PACKAGE_MISMATCH");
         long versionCode = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
         if (versionCode <= installedVersionCode()) throw new UpdateException("更新版本必须高于已安装版本。", "UPDATE_VERSION_NOT_NEWER");
         if (versionCode != manifest.versionCode || !manifest.version.equals(info.versionName)) throw new UpdateException("更新包版本与清单不一致。", "UPDATE_VERSION_MISMATCH");
@@ -293,34 +345,51 @@ public final class UpdateManager {
         return result;
     }
 
-    private HttpURLConnection open(String address, boolean artifact) throws Exception {
+    private HttpURLConnection open(String address, boolean artifact, String filename, long deadline) throws Exception {
         URI uri = UpdatePolicy.requestUri(address, false);
+        boolean domestic = address.startsWith(UpdatePolicy.GITEE_API + "/releases/");
         for (int redirects = 0; redirects <= 4; redirects++) {
             if (artifact && cancelled) throw new UpdateException("下载已取消。", "UPDATE_CANCELLED");
             HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
             connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS); connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setConnectTimeout(remainingTimeout(deadline, CONNECT_TIMEOUT_MS)); connection.setReadTimeout(remainingTimeout(deadline, READ_TIMEOUT_MS));
             connection.setRequestMethod("GET"); connection.setRequestProperty("User-Agent", "Yuyin-Mobile-Updater"); connection.setRequestProperty("Accept-Encoding", "identity");
             connection.setRequestProperty("Accept", artifact ? "application/vnd.android.package-archive" : "application/json");
-            if (artifact) activeConnection = connection;
+            connection.setRequestProperty("Cache-Control", "no-cache");
+            if (artifact) activeConnection = connection; else manifestConnections.add(connection);
             final int response;
             try { response = connection.getResponseCode(); }
-            catch (Exception failure) { connection.disconnect(); if (artifact) activeConnection = null; throw failure; }
+            catch (Exception failure) { connection.disconnect(); manifestConnections.remove(connection); if (artifact) activeConnection = null; throw failure; }
             if (response != 301 && response != 302 && response != 303 && response != 307 && response != 308) return connection;
             String location = connection.getHeaderField("Location");
             connection.disconnect();
-            if (!artifact || location == null || redirects == 4) throw new UpdateException("更新地址跳转异常。", "UPDATE_REDIRECT_DENIED");
-            uri = UpdatePolicy.requestUri(uri.resolve(location).toString(), true);
+            manifestConnections.remove(connection);
+            if (!artifact || location == null || redirects == 4 || (domestic && redirects != 0)) throw new UpdateException("更新地址跳转异常。", "UPDATE_REDIRECT_DENIED");
+            uri = domestic ? UpdatePolicy.domesticRedirect(location, address, filename) : UpdatePolicy.requestUri(uri.resolve(location).toString(), true);
+            if (!domestic && !address.equals(uri.toString()) && !"release-assets.githubusercontent.com".equals(uri.getHost())) throw new UpdateException("更新地址跳转异常。", "UPDATE_REDIRECT_DENIED");
         }
         throw new UpdateException("更新地址跳转过多。", "UPDATE_REDIRECT_DENIED");
     }
 
-    private static byte[] readLimited(InputStream source, long limit, long timeoutMs) throws Exception {
-        try (InputStream input = source) {
+    private static int remainingTimeout(long deadline, int maximum) throws UpdateException {
+        long remaining = deadline - SystemClock.elapsedRealtime();
+        if (remaining <= 0) throw new UpdateException("更新请求超时，请稍后重试。", "UPDATE_TIMEOUT");
+        return (int) Math.max(1, Math.min(maximum, remaining));
+    }
+
+    private static String strictUtf8(byte[] bytes) throws Exception {
+        return java.nio.charset.StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+    }
+
+    private static byte[] readLimited(HttpURLConnection connection, long limit, long deadline) throws Exception {
+        if (connection.getContentLengthLong() > limit) throw new UpdateException("更新清单过大。", "UPDATE_MANIFEST_LIMIT");
+        try (InputStream input = connection.getInputStream()) {
             java.io.ByteArrayOutputStream result = new java.io.ByteArrayOutputStream();
-            byte[] buffer = new byte[8192]; int count; long started = SystemClock.elapsedRealtime();
-            while ((count = input.read(buffer)) != -1) {
-                if (result.size() + count > limit || SystemClock.elapsedRealtime() - started > timeoutMs) throw new UpdateException("更新清单过大或响应超时。", "UPDATE_MANIFEST_LIMIT");
+            byte[] buffer = new byte[8192]; int count;
+            while (true) {
+                connection.setReadTimeout(remainingTimeout(deadline, READ_TIMEOUT_MS));
+                count = input.read(buffer); if (count == -1) break;
+                if (result.size() + count > limit || SystemClock.elapsedRealtime() > deadline) throw new UpdateException("更新清单过大或响应超时。", "UPDATE_MANIFEST_LIMIT");
                 result.write(buffer, 0, count);
             }
             return result.toByteArray();
@@ -360,31 +429,72 @@ public final class UpdateManager {
     private static String sha256(File file) throws Exception { MessageDigest digest = MessageDigest.getInstance("SHA-256"); try (InputStream input = new BufferedInputStream(new FileInputStream(file))) { byte[] buffer = new byte[64 * 1024]; int count; while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count); } return hex(digest.digest()); }
 
     public static final class UpdateManifest {
-        final String version, url, sha256, releaseNotesUrl, notes, publishedAt;
-        final long versionCode, size;
-        private UpdateManifest(String version, long versionCode, String url, String sha256, long size, String releaseNotesUrl, String notes, String publishedAt) { this.version = version; this.versionCode = versionCode; this.url = url; this.sha256 = sha256; this.size = size; this.releaseNotesUrl = releaseNotesUrl; this.notes = notes; this.publishedAt = publishedAt; }
+        final String version, url, sha256, releaseNotesUrl, notes, publishedAt, provider;
+        final long versionCode, size, releaseId, attachmentId;
+        private UpdateManifest(String version, long versionCode, String url, String sha256, long size, String releaseNotesUrl, String notes, String publishedAt, String provider, long releaseId, long attachmentId) { this.version = version; this.versionCode = versionCode; this.url = url; this.sha256 = sha256; this.size = size; this.releaseNotesUrl = releaseNotesUrl; this.notes = notes; this.publishedAt = publishedAt; this.provider = provider; this.releaseId = releaseId; this.attachmentId = attachmentId; }
         static UpdateManifest parse(String body) throws Exception {
+            return parse(body, false);
+        }
+        static UpdateManifest parseDomesticContents(String body) throws Exception {
+            if (body == null || body.length() > MAX_CONTENTS_BYTES) throw new UpdateException("国内更新清单过大。", "UPDATE_MANIFEST_LIMIT");
+            JSONObject wrapper = new JSONObject(body);
+            long size = UpdatePolicy.positiveInteger(wrapper.opt("size"), MAX_MANIFEST_BYTES);
+            if (!"file".equals(wrapper.optString("type")) || !"base64".equals(wrapper.optString("encoding")) || !"domestic.json".equals(wrapper.optString("name")) || !"updates/domestic.json".equals(wrapper.optString("path")) || size < 1 || !(wrapper.opt("content") instanceof String)) throw new UpdateException("国内更新文件响应无效。", "UPDATE_MANIFEST_INVALID");
+            String content = wrapper.getString("content");
+            if (content.length() > MAX_CONTENTS_BYTES) throw new UpdateException("国内更新文件过大。", "UPDATE_MANIFEST_LIMIT");
+            String compact = content.replace("\r", "").replace("\n", "");
+            if (compact.length() > ((MAX_MANIFEST_BYTES + 2) / 3) * 4 || compact.length() % 4 != 0 || !compact.matches("[A-Za-z0-9+/]*={0,2}")) throw new UpdateException("国内更新编码无效。", "UPDATE_MANIFEST_INVALID");
+            byte[] decoded = android.util.Base64.decode(compact, android.util.Base64.NO_WRAP);
+            if (decoded.length != size || !android.util.Base64.encodeToString(decoded, android.util.Base64.NO_WRAP).equals(compact)) throw new UpdateException("国内更新编码或大小无效。", "UPDATE_MANIFEST_INVALID");
+            return parse(strictUtf8(decoded), true);
+        }
+        private static UpdateManifest parse(String body, boolean domestic) throws Exception {
             if (body == null || body.length() > MAX_MANIFEST_BYTES) throw new UpdateException("更新清单过大。", "UPDATE_MANIFEST_LIMIT");
             JSONObject root = new JSONObject(body);
-            if (UpdatePolicy.positiveInteger(root.opt("schemaVersion"), 1) != 1 || !"android".equals(root.optString("platform"))) throw new UpdateException("更新清单版本不受支持。", "UPDATE_MANIFEST_INVALID");
+            if (UpdatePolicy.positiveInteger(root.opt("schemaVersion"), 2) != (domestic ? 2 : 1) || !"android".equals(root.optString("platform")) || (domestic && !"gitee".equals(root.optString("provider")))) throw new UpdateException("更新清单版本不受支持。", "UPDATE_MANIFEST_INVALID");
             String version = root.optString("version", "");
             if (!UpdatePolicy.validVersion(version)) throw new UpdateException("更新版本号无效。", "UPDATE_MANIFEST_INVALID");
             long versionCode = UpdatePolicy.positiveInteger(root.opt("versionCode"), 2100000000);
             JSONObject artifact = root.optJSONObject("artifact");
             if (versionCode < 1 || artifact == null) throw new UpdateException("更新清单缺少版本信息。", "UPDATE_MANIFEST_INVALID");
             String expectedUrl = UpdatePolicy.artifactUrl(version);
+            long releaseId = 0, attachmentId = 0;
+            if (domestic) {
+                JSONObject source = root.optJSONObject("source");
+                if (source == null) throw new UpdateException("国内附件身份缺失。", "UPDATE_MANIFEST_INVALID");
+                releaseId = UpdatePolicy.positiveInteger(source.opt("releaseId"), Integer.MAX_VALUE);
+                attachmentId = UpdatePolicy.positiveInteger(source.opt("attachmentId"), Integer.MAX_VALUE);
+                if (releaseId < 1 || attachmentId < 1 || !UpdatePolicy.filename(version).equals(source.optString("filename"))) throw new UpdateException("国内附件身份无效。", "UPDATE_MANIFEST_INVALID");
+                expectedUrl = UpdatePolicy.domesticArtifactUrl(releaseId, attachmentId);
+            }
             String url = artifact.optString("url", "");
             String sha = artifact.optString("sha256", "");
             long size = UpdatePolicy.positiveInteger(artifact.opt("size"), MAX_APK_BYTES);
             if (!expectedUrl.equals(url) || sha.length() != 64 || !sha.matches("[0-9a-fA-F]{64}") || size < 1 || size > MAX_APK_BYTES) throw new UpdateException("更新文件信息无效。", "UPDATE_MANIFEST_INVALID");
             String releaseNotesUrl = root.optString("releaseNotesUrl", "");
-            if (!UpdatePolicy.releaseNotesUrl(version).equals(releaseNotesUrl)) throw new UpdateException("更新说明地址无效。", "UPDATE_MANIFEST_INVALID");
+            if (!(domestic ? UpdatePolicy.domesticNotesUrl(version) : UpdatePolicy.releaseNotesUrl(version)).equals(releaseNotesUrl)) throw new UpdateException("更新说明地址无效。", "UPDATE_MANIFEST_INVALID");
             if (!(root.opt("notes") instanceof String) || root.optString("notes").length() > 8000) throw new UpdateException("更新说明格式无效。", "UPDATE_MANIFEST_INVALID");
             String published = root.optString("publishedAt", "");
             if (!published.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?Z")) throw new UpdateException("更新时间格式无效。", "UPDATE_MANIFEST_INVALID");
-            return new UpdateManifest(version, versionCode, url, sha.toLowerCase(Locale.ROOT), size, releaseNotesUrl, root.optString("notes"), published);
+            return new UpdateManifest(version, versionCode, url, sha.toLowerCase(Locale.ROOT), size, releaseNotesUrl, root.optString("notes"), published, domestic ? "gitee" : "github", releaseId, attachmentId);
         }
-        JSObject toJson() { JSObject result = new JSObject(); result.put("version", version); result.put("versionCode", versionCode); result.put("url", url); result.put("size", size); result.put("releaseNotesUrl", releaseNotesUrl); result.put("notes", notes); result.put("publishedAt", publishedAt); return result; }
+        static UpdateManifest select(UpdateManifest a, UpdateManifest b) throws UpdateException {
+            if (a == null) return b;
+            if (b == null) return a;
+            int comparison = UpdatePolicy.compareVersions(a.version, b.version);
+            if (comparison == 0 || a.versionCode == b.versionCode) {
+                if (comparison != 0 || a.versionCode != b.versionCode || a.size != b.size || !a.sha256.equals(b.sha256)) throw new UpdateException("更新源的同版本文件不一致，已停止更新。", "UPDATE_SOURCE_CONFLICT");
+                return "gitee".equals(a.provider) ? a : b;
+            }
+            if ((comparison > 0) != (a.versionCode > b.versionCode)) throw new UpdateException("更新源版本与构建编号不一致，已停止更新。", "UPDATE_SOURCE_CONFLICT");
+            return comparison > 0 ? a : b;
+        }
+        UpdateManifest githubFallback() { return new UpdateManifest(version, versionCode, UpdatePolicy.artifactUrl(version), sha256, size, UpdatePolicy.releaseNotesUrl(version), notes, publishedAt, "github", 0, 0); }
+        JSObject toJson() {
+            JSObject result = new JSObject(); result.put("version", version); result.put("versionCode", versionCode); result.put("url", url); result.put("size", size); result.put("releaseNotesUrl", releaseNotesUrl); result.put("notes", notes); result.put("publishedAt", publishedAt); result.put("provider", provider);
+            if ("gitee".equals(provider)) { JSObject source = new JSObject(); source.put("releaseId", releaseId); source.put("attachmentId", attachmentId); source.put("filename", UpdatePolicy.filename(version)); result.put("source", source); }
+            return result;
+        }
     }
     private static final class UpdateException extends Exception { final String code; UpdateException(String message, String code) { super(message); this.code = code; } }
 }

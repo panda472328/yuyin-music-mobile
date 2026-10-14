@@ -1,5 +1,17 @@
 # Android 原生验证
 
+## 国内双源更新（当前源码）
+
+本轮结果见 [QA-DOMESTIC-UPDATES.md](QA-DOMESTIC-UPDATES.md)。`ControlledDomesticUpdateTest` 包含 Contents 解析、双源选择和实际更新器下载 3 项。完整下载流程只在明确指定、没有音乐库 / 偏好的独立 Debug 设备执行；需隔离构建同包名、同 Debug 证书的未来夹具 `1.0.0` / versionCode 100，不能改仓库版本文件或读取正式密钥。当前被测应用为 Debug 0.1.3 / versionCode 4；版本超过夹具时需调整测试与隔离构建，跳过不能记为通过。
+
+```powershell
+# 换成自己的专用实例；先构建并安装当前 Debug 和 androidTest APK
+adb -s emulator-5562 push .qa/domestic-update-future-debug.apk /data/local/tmp/yuyin-update-domestic-future.apk
+adb -s emulator-5562 shell am instrument -w -r -e class com.yuyin.music.mobile.ControlledDomesticUpdateTest -e yuyinControlledEmulator true -e yuyinCandidateApk /data/local/tmp/yuyin-update-domestic-future.apk com.yuyin.music.mobile.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+测试只以 instrumentation URL handler 返回受控内存 HTTP；实际执行正式 URL 策略、文件下载、PackageManager 和签名校验。覆盖国内优先、异常下载 / 跳转回退、冲突、镜像落后、取消不回退和清单阻塞的有界检查；不连接 Gitee / GitHub / Bilibili，不确认安装。公开国内附件和正式签名升级需另行验收。
+
 ## 当前源码：PC 0.5.3 同步
 
 以下新增测试与历史发行版记录分开维护，实际本轮结果见 [QA-PC-SYNC.md](QA-PC-SYNC.md)。只在专门新建、无真实账号和日常音乐库的测试实例运行，不清空旧设备来满足条件。
