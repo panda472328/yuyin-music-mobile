@@ -2,6 +2,8 @@
 
 Android 从本仓库的 `updates/stable.json` 检查正式版本；PC 使用独立仓库和独立清单。提交代码到 GitHub 不等于通知用户，只有正式安装文件公开并成功更新清单，客户端才会发现新版本。
 
+手机版已有独立 [Gitee 源码仓库](https://gitee.com/openmusic/openmusic-mobile)。当前原生检查、APK 地址白名单和 GitHub 发布工作流仍使用 GitHub；建立或推送 Gitee 仓库不会把已安装客户端的更新路径自动改为国内地址。接入国内更新需要另行修改并验证清单读取、APK 附件下载和发布推进，保留版本、包名、SHA-256、大小和升级签名校验。Gitee 源码可访问不代表 APK 附件与下载路径已验收。
+
 发布有两种入口：推送版本标签让 Actions 构建签名 APK，或先在本机签名、验收，再到 GitHub 上传并正式发布。第二种只使用公开 APK 和证书校验，不需要配置 Android 签名 secrets。
 
 ## 用户流程
