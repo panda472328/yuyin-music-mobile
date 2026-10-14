@@ -57,14 +57,16 @@ test('official search rank remains intact, labels decoded, and searching never i
   assert.equal(h.plays(), 0)
 })
 
-test('logged-out and challenged sessions cannot turn into successful search/play', async () => {
-  const anonymous = harness(() => ({ code: -101, data: { isLogin: false } }))
+test('guest playback works while account-only actions and challenges retain verification', async () => {
+  const anonymous = harness(url => url.pathname.endsWith('/nav') ? { code: -101, data: { isLogin: false } } : { code: 0, data: { result: [] } })
   assert.equal((await anonymous.api.checkAccount()).loggedIn, false)
-  await assert.rejects(anonymous.api.search('晴天'), /登录/)
-  await assert.rejects(anonymous.api.play(song), /登录/)
-  assert.equal(anonymous.plays(), 0)
+  assert.deepEqual((await anonymous.api.search('晴天', 1, 'video')).songs, [])
+  await anonymous.api.play(song)
+  assert.equal(anonymous.plays(), 1)
+  await assert.rejects(anonymous.api.getFavoriteFolders(), /登录/)
   const challenge = harness(() => ({ code: -352, message: 'challenge' }))
   await assert.rejects(challenge.api.checkAccount(), /验证/)
+  await assert.rejects(challenge.api.search('晴天', 1, 'video'), /验证/)
 })
 
 test('session change rejects an in-flight search and listener cleanup removes bridge callback', async () => {
@@ -72,7 +74,7 @@ test('session change rejects an in-flight search and listener cleanup removes br
   const h = harness(url => url.pathname.endsWith('/nav') ? nav : new Promise(resolve => { release = resolve }))
   let changed = false
   const listener = await h.api.addSessionListener(() => { changed = true })
-  const result = h.api.search('晴天')
+  const result = h.api.search('晴天', 1, 'video')
   while (!release) await new Promise(resolve => setTimeout(resolve, 0))
   h.events.get('sessionChanged')?.({})
   release({ code: 0, data: { result: [] } })
@@ -82,13 +84,13 @@ test('session change rejects an in-flight search and listener cleanup removes br
   assert.equal(h.events.has('sessionChanged'), false)
 })
 
-test('returning from login invalidates old checks and play permits without a native session event', async () => {
+test('returning from login invalidates account-only permits without blocking guests', async () => {
   let signedIn = true
   const h = harness(() => signedIn ? nav : { code: -101, data: { isLogin: false } })
   await h.api.checkAccount()
   h.native.openLogin = async () => { signedIn = false }
   await h.api.login()
-  await assert.rejects(h.api.play(song), /登录/)
+  await assert.rejects(h.api.getFavoriteFolders(), /登录/)
   assert.equal(h.plays(), 0)
   h.native.openLogin = async () => { signedIn = true }
   await h.api.login()

@@ -4,10 +4,12 @@ PC 版与手机版使用独立工作目录和独立 Git 仓库，两个仓库可
 
 | 项目 | 仓库 | 应用标识 | 当前版本 |
 | --- | --- | --- | --- |
-| PC 版 | [yuyin-music](https://github.com/panda472328/yuyin-music) | `com.yuyin.music` | `0.4.10` |
+| PC 版 | [yuyin-music](https://github.com/panda472328/yuyin-music) | `com.yuyin.music` | `0.5.3` |
 | Android 版 | [yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile) | `com.yuyin.music.mobile` | `0.1.3` / versionCode `4` |
 
 GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认当前项目。不把 PC 仓库覆盖成手机版，也不把手机目录放成 PC 仓库中的嵌套工程。共同视觉规范的变更在两个仓库分别修改、验证和提交。
+
+展示品牌统一为 `open音乐`，旧的 Yuyin / yuyin 技术名、包名、存储键、产物名与仓库地址保留。当前手机源码已同步 PC 0.5.3，仍处于未发布阶段，公开 APK 为 0.1.3。手机版尚无独立 Gitee 仓库，现有 `updates/stable.json` 和原生 APK 下载策略仍使用手机版 GitHub 仓库；PC 的 Gitee 地址不能用于 Android APK。
 
 ## 目录约定
 

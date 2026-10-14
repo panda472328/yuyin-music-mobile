@@ -8,6 +8,8 @@ import { initializeLibrary, saveLibrary as normalizeLibrary, type LibraryState }
 import { defaultPreferences, normalizePreferences } from '../domain/preferences'
 import { buildLyricsQueries, selectLyricsMatch } from '../domain/lyrics'
 import { buildWbiQuery, selectSubtitle, subtitleDescriptor, subtitleBodyToLyrics } from '../domain/subtitles'
+import { createSearchApi } from '../domain/search'
+import { createCommentsApi } from '../domain/comments'
 import { normalizeUpdateState, type MobileUpdateState } from '../domain/updates'
 export { getLyricOffset } from '../domain/preferences'
 
@@ -18,6 +20,7 @@ const noopListener = (): PluginListenerHandle => ({ remove: async () => {} })
 const unavailable = (): never => { throw new Error('登录和播放需要在 Android APK 中使用，浏览器只用于预览界面。') }
 
 const preview: YuyinNativePlugin = {
+  setAppearance: async ({ dark }) => ({ dark }), mutateComment: async () => unavailable(),
   checkUpdate: async () => unavailable(), downloadUpdate: async () => unavailable(), cancelUpdate: async () => unavailable(), installUpdate: async () => unavailable(), getUpdateState: async () => unavailable(),
   request: async () => unavailable(), openLogin: async () => unavailable(), openSource: async () => unavailable(),
   play: async () => unavailable(), pause: async () => unavailable(), resume: async () => unavailable(), seek: async () => unavailable(), setVolume: async () => unavailable(),
@@ -49,8 +52,8 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
     account.invalidate(); sessionGeneration++; cache.clear(); pendingLyrics.clear()
   }
 
-  async function json(url: string): Promise<unknown> {
-    const response = await native.request({ url })
+  async function json(url: string, timeoutMs?: number): Promise<unknown> {
+    const response = await native.request({ url, ...(timeoutMs ? { timeoutMs } : {}) })
     if (response.status < 200 || response.status >= 300) {
       const restricted = [401, 403, 412, 429].includes(response.status)
       throw new BilibiliError(restricted ? '服务要求登录或验证，请打开源站后重试。' : `网络服务返回 HTTP ${response.status}。`, restricted ? 'VERIFICATION_REQUIRED' : 'HTTP_ERROR', restricted)
@@ -135,17 +138,11 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
       finally { invalidateSession() }
     },
     openSource: () => native.openSource(),
-    async search(query: string, page = 1) {
-      const keyword = query.trim()
-      if (!keyword || keyword.length > 200) throw new Error('请输入 1 到 200 个字符的歌名或歌手。')
-      if (!Number.isSafeInteger(page) || page < 1 || page > 1000) throw new Error('搜索页码无效。')
-      const permit = await account.requireLoggedIn()
-      const params = new URLSearchParams({ search_type: 'video', keyword, order: 'totalrank', page: String(page), page_size: '20' })
-      const result = parseSearch(await json(`${API}/x/web-interface/search/type?${params}`), keyword, page)
-      account.assertRevision(permit.revision)
-      return result
-    },
-    async play(song: Song) { const permit = await account.requireLoggedIn(); account.assertRevision(permit.revision); return native.play({ song }) },
+    ...createSearchApi(json, () => sessionGeneration),
+    comments: createCommentsApi(json, native, () => sessionGeneration),
+    setAppearance: (theme: NonNullable<MobilePreferences['theme']>, dark: boolean) => native.setAppearance({ theme, dark }),
+    addAppearanceListener: (callback: () => void) => native.addListener('appearanceChanged', callback),
+    async play(song: Song) { return native.play({ song }) },
     pause: () => native.pause(), resume: () => native.resume(), seek: (seconds: number) => native.seek({ seconds }),
     setVolume: (volume: number) => native.setVolume({ volume }), getStatus: () => native.getStatus(),
     async getLyrics(song: Song, provider: LyricsProvider = 'bilibili', force = false): Promise<LyricsLookupResult> {

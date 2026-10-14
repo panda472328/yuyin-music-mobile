@@ -141,7 +141,7 @@ public final class PlaybackService extends Service {
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         wakeLock = ((PowerManager) getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "YuyinMusic:playback");
         wakeLock.setReferenceCounted(false);
-        mediaSession = new MediaSession(this, "余音播放");
+        mediaSession = new MediaSession(this, "open音乐播放");
         mediaSession.setCallback(new MediaSession.Callback() {
             @Override public void onPlay() { resume(null); }
             @Override public void onPause() { pause(null); }
@@ -151,7 +151,7 @@ public final class PlaybackService extends Service {
         mediaSession.setActive(true);
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(CHANNEL, "音乐播放", NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("余音后台播放和锁屏控制");
+            channel.setDescription("open音乐后台播放和锁屏控制");
             channel.setSound(null, null);
             ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
         }
@@ -253,6 +253,7 @@ public final class PlaybackService extends Service {
                 if (song == null || !NativePolicy.expectedVideo(url, song.optString("bvid"))) return;
                 CookieManager.getInstance().flush();
                 view.evaluateJavascript(MediaScript.backgroundGuard(song.optString("bvid")), null);
+                view.evaluateJavascript(MediaScript.mv(song.optString("bvid"), visibleSource != null), null);
                 if (!desiredPlayback) read("pause", 0, null);
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError failure) {
@@ -286,6 +287,7 @@ public final class PlaybackService extends Service {
     void detachActivity(Activity activity) {
         if (attachedActivity.get() != activity) return;
         // Move out of a source dialog as well: its async dismiss must not retain a dead Activity.
+        if (source != null && song != null) source.evaluateJavascript(MediaScript.mv(song.optString("bvid"), false), null);
         visibleSource = null;
         if (source != null && holder != null && source.getParent() != holder) attachTo(holder);
         else if (source != null && holder == null) removeParent(source);
@@ -296,8 +298,18 @@ public final class PlaybackService extends Service {
         attachActivity(activity);
         visibleSource = container;
         attachTo(container);
+        if (source != null && song != null) {
+            WebView expectedSource = source;
+            long expectedGeneration = generation;
+            String bvid = song.optString("bvid");
+            expectedSource.post(() -> {
+                if (!destroyed && source == expectedSource && generation == expectedGeneration && visibleSource == container)
+                    expectedSource.evaluateJavascript(MediaScript.mv(bvid, true), null);
+            });
+        }
     }
     void hideSource() {
+        if (source != null && song != null) source.evaluateJavascript(MediaScript.mv(song.optString("bvid"), false), null);
         visibleSource = null;
         if (createBackgroundHost()) attachTo(holder);
         else {
@@ -463,7 +475,7 @@ public final class PlaybackService extends Service {
         if (snapshot.optInt("mediaError") > 0) { fail("Bilibili 媒体加载失败，请打开源视频检查。", "MEDIA_ERROR", expectedGeneration); return; }
         String playError = snapshot.optString("playError", "");
         if (desiredPlayback && !playError.isEmpty() && !playError.equals("null")) {
-            fail("网页未能开始播放。请打开源视频检查，然后返回余音重试。", "MEDIA_PLAY_BLOCKED", expectedGeneration); return;
+            fail("网页未能开始播放。请打开源视频检查，然后返回 open音乐重试。", "MEDIA_PLAY_BLOCKED", expectedGeneration); return;
         }
         if (snapshot.optBoolean("ended")) {
             if (!"ended".equals(state)) {
@@ -587,7 +599,7 @@ public final class PlaybackService extends Service {
         Intent launch = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent content = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
-        builder.setSmallIcon(R.drawable.ic_stat_yuyin).setContentTitle(song == null ? "余音音乐播放器" : song.optString("title", "余音"))
+        builder.setSmallIcon(R.drawable.ic_stat_yuyin).setContentTitle(song == null ? "open音乐音乐播放器" : song.optString("title", "open音乐"))
                 .setContentText(error != null ? "打开播放器查看问题" : (song == null ? "准备播放" : song.optString("artist", "Bilibili")))
                 .setContentIntent(content).setOnlyAlertOnce(true).setOngoing(playing).setVisibility(Notification.VISIBILITY_PUBLIC)
                 .addAction(new Notification.Action.Builder(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,

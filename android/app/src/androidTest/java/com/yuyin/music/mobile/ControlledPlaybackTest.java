@@ -153,7 +153,7 @@ public class ControlledPlaybackTest {
         Assume.assumeTrue("Never replace an existing playback service", PlaybackService.current() == null);
         String libraryBefore = context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("library", null);
         String preferencesBefore = context.getSharedPreferences("yuyin_mobile_data_v1", Context.MODE_PRIVATE).getString("preferences", null);
-        String longMedia = muxedMediaHtml();
+        String longMedia = muxedMediaHtml().replace("window.qaAutoNext=false;", "window.qaAutoNext=false;document.querySelector('video').addEventListener('loadedmetadata',function(){this.currentTime=30;},{once:true});");
         try (ActivityScenario<QaPlaybackActivity> scenario = ActivityScenario.launch(QaPlaybackActivity.class)) {
             ContextCompat.startForegroundService(context, new Intent(context, PlaybackService.class));
             await(() -> {
@@ -188,6 +188,8 @@ public class ControlledPlaybackTest {
             try { interrupted.result.get(2, TimeUnit.SECONDS); fail("Old play request must be rejected"); }
             catch (ExecutionException expected) { assertEquals("PLAYBACK_INTERRUPTED", expected.getCause().getMessage()); }
             complete(started, 20, "Initial controlled MP4 play");
+            assertTrue("First source position must reset instead of restoring 30 seconds", snapshot().optDouble("currentTime") < 3);
+            evidence.put("initialSourceRestoreReset", true);
             await(() -> snapshot().optDouble("currentTime") > 0.5 && snapshot().optString("state").equals("playing"), 10000, "Real HTML5 time did not advance");
             assertEquals("BV1ab411c7XZ", snapshot().optJSONObject("song").optString("bvid"));
             assertTrue(wakeHeld());
@@ -204,6 +206,13 @@ public class ControlledPlaybackTest {
             assertNotNull(privateDisplay);
             assertTrue("Background source display must stay private", (privateDisplay.getDisplay().getFlags() & Display.FLAG_PRIVATE) != 0);
             evidence.put("privateServiceSourceDisplay", true);
+
+            double beforeUnexpectedJump = snapshot().optDouble("currentTime");
+            evaluate("document.querySelector('video').currentTime=30");
+            SystemClock.sleep(1000);
+            await(() -> snapshot().optDouble("currentTime") < beforeUnexpectedJump + 3, 5000, "Unexpected source seek was not corrected");
+            assertEquals("true", evaluate("document.querySelector('video').currentTime<" + (beforeUnexpectedJump + 3)));
+            evidence.put("unexpectedSourceSeekCorrected", true);
 
             Pending seek = new Pending(); onMain(() -> service.seek(10, seek)); complete(seek, 5, "Seek controlled MP4 to 10s");
             await(() -> snapshot().optDouble("currentTime") >= 10, 4000, "Seek did not use actual media position");
@@ -236,6 +245,7 @@ public class ControlledPlaybackTest {
                 service.showSource(visible, activity);
             });
             SystemClock.sleep(1300);
+            assertEquals("true", evaluate("document.documentElement.classList.contains('yuyin-mobile-mv')"));
             scenario.onActivity(activity -> {
                 FrameLayout next = new FrameLayout(activity);
                 activity.root.addView(next, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600));
@@ -245,6 +255,7 @@ public class ControlledPlaybackTest {
                 service.hideSource(next);
             });
             assertSame(source, field("source"));
+            assertEquals("false", evaluate("document.documentElement.classList.contains('yuyin-mobile-mv')"));
             assertTrue(snapshot().optDouble("currentTime") > beforeSource + 0.6);
             evidence.put("sourceReparentKeepsMedia", true);
 

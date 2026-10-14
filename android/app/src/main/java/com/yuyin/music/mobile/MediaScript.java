@@ -20,6 +20,15 @@ final class MediaScript {
     static String backgroundGuard(String bvid) {
         return "(function(){const a={bvid:" + JSONObject.quote(bvid) + "};" + documentCheck() + "return;" + visibilityGuard() + "})()";
     }
+    static String mv(String bvid, boolean enabled) {
+        return "(function(){const a={bvid:" + JSONObject.quote(bvid) + "};" + documentCheck() + "return;" +
+            "const root=document.documentElement;root.classList.toggle('yuyin-mobile-mv'," + enabled + ");" +
+            "if(document.getElementById('yuyin-mobile-mv-style'))return;const style=document.createElement('style');style.id='yuyin-mobile-mv-style';" +
+            "style.textContent='.yuyin-mobile-mv,.yuyin-mobile-mv body{overflow:hidden!important;background:#000!important;}" +
+            ".yuyin-mobile-mv .bpx-player-container,.yuyin-mobile-mv .bilibili-player{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:2147483600!important;}" +
+            ".yuyin-mobile-mv video{object-fit:contain!important;}';root.appendChild(style);})()";
+    }
+
     static String build(String command, String bvid, double volume, double value) {
         String args = "{command:" + JSONObject.quote(command) + ",bvid:" + JSONObject.quote(bvid) +
                 ",volume:" + volume + ",value:" + value + "}";
@@ -31,9 +40,11 @@ final class MediaScript {
                 "const v=document.querySelector('.bpx-player-video-wrap video')||document.querySelector('.bilibili-player-video video')||document.querySelector('video');" +
                 "if(!v){const t=(document.body?document.body.innerText:'').slice(0,14000);const reasons=['412 Precondition Failed','403 Forbidden','安全验证','人机验证','访问异常','访问受限','请求被拦截','登录后观看','视频已失效','视频已删除','视频不见了','应版权方要求','所在地区不可用'];return JSON.stringify(Object.assign(empty,{blocked:reasons.find(function(r){return t.includes(r);})||null}));}" +
                 "if(m.video!==v){m.video=v;m.ended=false;m.error=0;m.playing=false;m.playError=null;m.lastTime=v.currentTime;v.volume=m.volume;v.addEventListener('error',function(){if(m.video===v)m.error=v.error?v.error.code:0;});v.addEventListener('playing',function(){if(m.video===v)m.playing=true;});['pause','waiting','stalled','ended'].forEach(function(n){v.addEventListener(n,function(){if(m.video===v)m.playing=false;});});}" +
+                MediaTimeline.install() +
                 "if(a.command==='volume'){m.volume=a.value;v.volume=a.value;}" +
                 "if(a.command==='pause'){v.pause();m.playing=false;}" +
                 "if(a.command==='seek'){v.currentTime=Math.max(0,Math.min(a.value,Number.isFinite(v.duration)?v.duration:a.value));m.ended=false;}" +
+                MediaTimeline.guard() +
                 "if(a.command==='play'){m.ended=false;m.volume=a.volume;m.playError=null;v.volume=a.volume;v.muted=false;try{const p=v.play();if(p&&p.then)p.then(function(){if(m.video===v)m.playing=!v.paused;}).catch(function(e){if(m.video===v)m.playError=e&&e.message?e.message:String(e);});}catch(e){m.playError=e.message||String(e);}}" +
                 "if(!v.paused&&v.currentTime>m.lastTime+0.01)m.playing=true;m.lastTime=v.currentTime;" +
                 "return JSON.stringify({found:true,paused:v.paused,ended:m.ended||v.ended,currentTime:Number.isFinite(v.currentTime)?v.currentTime:0,duration:Number.isFinite(v.duration)?v.duration:0,readyState:v.readyState,playing:m.playing,mediaError:v.error?v.error.code:m.error,playError:m.playError||null});})()";

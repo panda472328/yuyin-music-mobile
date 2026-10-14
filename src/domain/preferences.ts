@@ -1,7 +1,7 @@
 import type { LyricsProvider } from '../lyric-types'
 import type { MobilePreferences } from '../native/contract'
 
-export const defaultPreferences = (): MobilePreferences => ({ version: 1, lyricsProvider: 'bilibili', lyricOffsets: {} })
+export const defaultPreferences = (): MobilePreferences => ({ version: 1, lyricsProvider: 'bilibili', lyricOffsets: {}, theme: 'classic', searchMode: 'song' })
 
 export function normalizePreferences(value: unknown): MobilePreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('设置格式异常，原记录已保留。')
@@ -11,7 +11,7 @@ export function normalizePreferences(value: unknown): MobilePreferences {
   for (const [key, offset] of Object.entries(input.lyricOffsets).slice(0, 3000)) {
     if (/^(?:bilibili|lrclib):BV[0-9A-Za-z]{10}$/.test(key) && typeof offset === 'number' && Number.isFinite(offset)) lyricOffsets[key] = Math.round(Math.min(120, Math.max(-120, offset)) * 100) / 100
   }
-  return { version: 1, lyricsProvider: input.lyricsProvider === 'lrclib' ? 'lrclib' : 'bilibili', lyricOffsets }
+  return { version: 1, lyricsProvider: input.lyricsProvider === 'lrclib' ? 'lrclib' : 'bilibili', lyricOffsets, theme: ['classic', 'bilibili', 'system', 'pixel'].includes(String(input.theme)) ? input.theme as MobilePreferences['theme'] : 'classic', searchMode: input.searchMode === 'video' ? 'video' : 'song' }
 }
 
 export function getLyricOffset(preferences: MobilePreferences, provider: LyricsProvider, bvid: string): number {

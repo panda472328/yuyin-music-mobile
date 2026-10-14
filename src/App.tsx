@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Search, Library, Music2, Settings2, Play, Pause, Heart, Plus, ChevronRight, ChevronLeft,
   SkipBack, SkipForward, ListMusic, MoreHorizontal, X, Check, Repeat1, Shuffle, Repeat,
   Volume2, LogIn, RefreshCw, FolderHeart, Trash2, Pencil, Clock3, Radio, ExternalLink,
-  AudioLines, ArrowRight, SlidersHorizontal, LoaderCircle, Info } from 'lucide-react'
+  MessageCircle, MonitorPlay, AudioLines, ArrowRight, SlidersHorizontal, LoaderCircle, Info } from 'lucide-react'
 import type { BilibiliAccountStatus, BilibiliFavoriteFolder, PlaybackStatus, SearchResult, Song } from './types'
 import type { LyricsLookupResult, LyricsProvider } from './lyric-types'
 import { addToPlaylist, createPlaylist, deletePlaylist, getNextIndex, importBilibiliPlaylist,
@@ -10,11 +10,15 @@ import { addToPlaylist, createPlaylist, deletePlaylist, getNextIndex, importBili
 import { activeLyricIndex, parseLrc } from './domain/lyrics'
 import { AccountGateController } from './domain/account-gate'
 import { mobile, isAndroid, getLyricOffset } from './native/api'
+import SearchBox from './SearchBox'
+import CommentsView from './CommentsView'
+import { rankSongSearchResults, type SearchMode } from './shared/search-mode'
+import { applyTheme } from './theme'
 import type { MobilePreferences } from './native/contract'
 import packageInfo from '../package.json'
 import { UpdateCard, useMobileUpdates } from './components/Updates'
 
-type Tab = 'search' | 'library' | 'player' | 'settings'
+type Tab = 'search' | 'library' | 'player' | 'settings' | 'comments'
 type LibraryView = 'overview' | 'favorites' | 'history' | string
 type Dialog = { type: 'create' } | { type: 'rename'; id: string; name: string } |
   { type: 'delete'; id: string; name: string } | { type: 'add'; song: Song } |
@@ -80,6 +84,12 @@ export default function App() {
   const [actionPending, setActionPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [guest, setGuest] = useState(false)
+  const [accountSessionKey, setAccountSessionKey] = useState(0)
+  const [searchMode, setSearchMode] = useState<SearchMode>('song')
+  const searchModeRef = useRef<SearchMode>('song')
+  const queryRef = useRef('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [searchedQuery, setSearchedQuery] = useState('')
   const [result, setResult] = useState<SearchResult | null>(null)
@@ -162,6 +172,8 @@ export default function App() {
     if (loaded[1].status === 'fulfilled') {
       preferencesRef.current = loaded[1].value
       setPreferences(loaded[1].value)
+      searchModeRef.current = loaded[1].value.searchMode ?? 'song'
+      setSearchMode(searchModeRef.current)
     } else failures.push(message(loaded[1].reason))
     if (failures.length) setLoadError(failures.join(' '))
     setBooting(false)
@@ -198,6 +210,7 @@ export default function App() {
       }),
       mobile.addSessionListener(() => {
         if (stopped) return
+        setAccountSessionKey(value => value + 1)
         searchSequence.current++
         setSearching(false)
         setResult(null)
@@ -302,20 +315,45 @@ export default function App() {
     receiveStatus(await mobile.getStatus())
   })
 
-  const searchSongs = async (text: string, page = 1) => {
+  const changeQuery = (value: string) => { queryRef.current = value; setQuery(value) }
+  const searchSongs = async (text: string, page = 1, mode = searchModeRef.current) => {
     const clean = text.trim()
-    if (!clean) return
+    if (!clean) { searchSequence.current++; setSearching(false); setResult(null); setSearchedQuery(''); return }
     const sequence = ++searchSequence.current
-    setSearching(true)
-    setError(null)
-    setSearchedQuery(clean)
+    setSearching(true); setError(null); setSearchedQuery(clean)
     if (page === 1) setResult(null)
     try {
-      const found = await mobile.search(clean, page)
-      if (sequence === searchSequence.current) setResult(found)
+      const found = await mobile.search(clean, page, mode)
+      if (sequence !== searchSequence.current || mode !== searchModeRef.current) return
+      setResult(previous => {
+        if (page === 1 || !previous || previous.query !== found.query) return found
+        const songs = [...new Map([...previous.songs, ...found.songs].map(song => [song.bvid, song])).values()]
+        return { ...found, songs: mode === 'song' ? rankSongSearchResults(songs, clean) : songs }
+      })
     } catch (failure) { if (sequence === searchSequence.current) setError(message(failure)) }
     finally { if (sequence === searchSequence.current) setSearching(false) }
   }
+  const changeSearchMode = (mode: SearchMode) => {
+    if (mode === searchModeRef.current) return
+    searchModeRef.current = mode; setSearchMode(mode)
+    void run(() => mutatePreferences(state => ({ ...state, searchMode: mode })))
+    void searchSongs(queryRef.current, 1, mode)
+  }
+  useEffect(() => {
+    const theme = preferences?.theme ?? 'classic'
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    let stopped = false
+    const refresh = () => {
+      applyTheme(theme, media.matches)
+      if (isAndroid) void mobile.setAppearance(theme, media.matches).then(result => {
+        if (!stopped) applyTheme(theme, result.dark)
+      }).catch(failure => { if (!stopped) setError(message(failure)) })
+    }
+    refresh(); media.addEventListener('change', refresh)
+    const listener = isAndroid ? mobile.addAppearanceListener(refresh) : null
+    void listener?.catch(failure => { if (!stopped) setError(message(failure)) })
+    return () => { stopped = true; media.removeEventListener('change', refresh); void listener?.then(handle => handle.remove()).catch(() => {}) }
+  }, [preferences?.theme])
 
   const favoriteSong = (song: Song) => void run(async () => {
     const was = libraryRef.current?.favorites.some(item => item.bvid === song.bvid)
@@ -418,7 +456,7 @@ export default function App() {
 
   return <div className={`app ${current ? 'has-player' : ''} ${!isAndroid ? 'preview-mode' : ''} ${error || loadError ? 'has-alert' : ''}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => { setTab('search'); setAccountMenu(false) }} aria-label="余音首页"><span className="brand-icon"><AudioLines size={23} strokeWidth={2.3} /></span><span>余音<small>YUYIN MUSIC</small></span></button>
+      <button className="brand" onClick={() => { setTab('search'); setAccountMenu(false) }} aria-label="open音乐首页"><span className="brand-icon"><AudioLines size={23} strokeWidth={2.3} /></span><span>open音乐<small>OPEN MUSIC</small></span></button>
       <div className="account-wrap">
         <button className="account-avatar" onClick={() => setAccountMenu(!accountMenu)} aria-label="账号菜单" aria-expanded={accountMenu}>
           <Avatar url={account.loggedIn ? account.account.avatar : undefined} label={account.loggedIn ? account.account.username : ''} />
@@ -438,12 +476,13 @@ export default function App() {
     {notice && <div className="toast" role="status"><Check size={17} />{notice}</div>}
     {updates.showBanner && tab !== 'settings' && <UpdateCard update={updates} compact />}
 
-    {booting ? <main className="loading-screen"><LoaderCircle className="spin" size={28} /><p>正在读取你的音乐库…</p></main> : isAndroid && !account.loggedIn ?
+    {booting ? <main className="loading-screen"><LoaderCircle className="spin" size={28} /><p>正在读取你的音乐库…</p></main> : isAndroid && !account.loggedIn && !guest ?
       <main className="login-screen">
-        <div className="login-art" aria-hidden="true"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={25} /><span>YUYIN MUSIC</span></div></div></div>
-        <span className="eyebrow">WELCOME TO YUYIN</span><h1>登录，开始听见喜欢</h1><p>使用你的 Bilibili 账号搜索音乐，<br />把收藏夹里的好声音带到这里。</p>
+        <div className="login-art" aria-hidden="true"><span className="orbit orbit-one" /><span className="orbit orbit-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={25} /><span>OPEN MUSIC</span></div></div></div>
+        <span className="eyebrow">WELCOME TO OPEN MUSIC</span><h1>登录，开始听见喜欢</h1><p>使用你的 Bilibili 账号搜索音乐，<br />把收藏夹里的好声音带到这里。</p>
         <button className="primary-button wide" onClick={login}><LogIn size={19} />登录 Bilibili<ArrowRight size={19} /></button>
         <button className="text-button" onClick={() => void checkAccount()} disabled={accountChecking}>{accountChecking ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}我已登录，重新检查</button>
+        <button className="text-button" onClick={() => setGuest(true)}>暂不登录，先逛逛</button>
         <button className="text-button" onClick={updates.check} disabled={updates.pending}>检查软件更新</button>
         {!updates.state.update && updates.state.state === 'error' && <p className="inline-error" role="alert">{updates.state.message}</p>}
         {accountError && <p className="inline-error" role="alert">{accountError}</p>}
@@ -451,22 +490,18 @@ export default function App() {
       </main> : <main className={`content ${tab === 'player' ? 'player-content' : ''} ${tab === 'player' && showTiming ? 'timing-visible' : ''}`}>
       {tab === 'search' && <>
         <div className="page-intro"><span className="eyebrow">YOUR EVERYDAY SOUNDTRACK</span><h1>发现音乐<span className="heading-dot" aria-hidden="true">.</span></h1><p>让熟悉的旋律，遇见今天的心情。</p></div>
-        <form className="search-form" onSubmit={event => { event.preventDefault(); void searchSongs(query) }}>
-          <Search size={21} /><input aria-label="搜索歌曲或歌手" placeholder="搜索歌曲、歌手或视频" value={query} onChange={event => setQuery(event.target.value)} maxLength={100} enterKeyHint="search" />
-          {query && <button type="button" className="icon-button clear-query" aria-label="清空搜索" onClick={() => setQuery('')}><X size={17} /></button>}
-          <button type="submit" className="search-submit" disabled={!query.trim() || searching} aria-label="搜索">{searching ? <LoaderCircle className="spin" size={19} /> : <ArrowRight size={20} />}</button>
-        </form>
+        <SearchBox query={query} mode={searchMode} searching={searching} inputRef={searchInputRef} onQueryChange={changeQuery} onModeChange={changeSearchMode} onSearch={text => void searchSongs(text)} />
         {!result && !searching && !searchedQuery && <>
-          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>把日子，听成<br />喜欢的样子。</h2><p>一首歌，一点留白。<br />搜索喜欢的声音，点击开始播放。</p></div><div className="hero-art" aria-hidden="true"><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={23} /><span>YUYIN MUSIC</span></div></div></div></div>
+          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>把日子，听成<br />喜欢的样子。</h2><p>一首歌，一点留白。<br />搜索喜欢的声音，点击开始播放。</p></div><div className="hero-art" aria-hidden="true"><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={23} /><span>OPEN MUSIC</span></div></div></div></div>
           <div className="section-heading"><h2>从这里开始</h2><span>随心搜索</span></div>
-          <div className="suggestions">{['周杰伦', '陈奕迅', '纯音乐', '爵士乐', '雨天', '深夜耳机'].map(text => <button key={text} onClick={() => { setQuery(text); void searchSongs(text) }}>{text}<ChevronRight size={14} /></button>)}</div>
+          <div className="suggestions">{['周杰伦', '陈奕迅', '纯音乐', '爵士乐', '雨天', '深夜耳机'].map(text => <button key={text} onClick={() => { changeQuery(text); void searchSongs(text) }}>{text}<ChevronRight size={14} /></button>)}</div>
           <div className="quiet-note"><Heart size={16} /><p>喜欢的歌，点一下爱心收藏。<br />下一次打开，它们还在这里。</p></div>
         </>}
         {searching && <div className="empty-state compact"><LoaderCircle className="spin" size={26} /><p>正在搜索「{searchedQuery}」…</p></div>}
         {result && !searching && <>
-          <div className="section-heading search-heading"><h2>搜索结果 <small>{result.total}</small></h2><span>Bilibili 综合排序</span></div>
+          <div className="section-heading search-heading"><h2>搜索结果 <small>{result.total}</small></h2><span>{searchMode === 'song' ? '单曲优先' : 'Bilibili 综合排序'}</span></div>
           {result.songs.length ? <div className="song-list">{rows(result.songs)}</div> : <Empty icon={<Search size={29} />} title="没有找到相关视频" text="换一个歌名或加上歌手，再试一次。" />}
-          {(result.page > 1 || result.hasMore) && <div className="pagination"><button onClick={() => void searchSongs(result.query, result.page - 1)} disabled={result.page === 1}><ChevronLeft size={18} />上一页</button><span>第 {result.page} 页</span><button onClick={() => void searchSongs(result.query, result.page + 1)} disabled={!result.hasMore}>下一页<ChevronRight size={18} /></button></div>}
+          {result.hasMore && <div className="pagination"><button onClick={() => void searchSongs(result.query, result.page + 1)} disabled={searching}>加载更多<ChevronRight size={18} /></button></div>}
         </>}
       </>}
 
@@ -489,7 +524,7 @@ export default function App() {
 
       {tab === 'player' && <>
         {!current ? <Empty icon={<AudioLines size={44} />} title="等一首喜欢的歌" text="搜索一首歌，点击结果开始播放。" action={<button className="primary-button" onClick={() => setTab('search')}><Search size={18} />去搜索</button>} /> : <>
-          <div className="now-header"><span className="eyebrow">NOW PLAYING</span><button className="icon-button" aria-label="当前歌曲更多操作" onClick={() => setDialog({ type: 'song', song: current })}><MoreHorizontal size={22} /></button></div>
+          <div className="now-header"><span className="eyebrow">NOW PLAYING</span><button className="icon-button" aria-label="打开当前视频 MV" onClick={() => void run(() => mobile.openSource())}><MonitorPlay size={22} /></button><button className="icon-button" aria-label="打开当前视频评论区" onClick={() => setTab('comments')}><MessageCircle size={22} /></button><button className="icon-button" aria-label="当前歌曲更多操作" onClick={() => setDialog({ type: 'song', song: current })}><MoreHorizontal size={22} /></button></div>
           <div className="now-title"><span><h1>{current.title}</h1><p>{current.artist}</p></span><button className={`icon-button ${favorites.has(current.bvid) ? 'is-favorite' : ''}`} aria-label={favorites.has(current.bvid) ? '取消收藏当前歌曲' : '收藏当前歌曲'} aria-pressed={favorites.has(current.bvid)} onClick={() => favoriteSong(current)}><Heart size={24} fill={favorites.has(current.bvid) ? 'currentColor' : 'none'} /></button></div>
           <div className="player-pane-switch"><button className={playerPane === 'lyrics' ? 'selected' : ''} onClick={() => setPlayerPane('lyrics')}>歌词</button><button className={playerPane === 'queue' ? 'selected' : ''} onClick={() => setPlayerPane('queue')}>播放队列 <small>{library?.queue.length ?? 0}</small></button></div>
           {playerPane === 'lyrics' ? <>
@@ -505,6 +540,8 @@ export default function App() {
         </>}
       </>}
 
+      {current && <div hidden={tab !== 'comments'}><CommentsView song={current} account={account.loggedIn ? account.account : null} accountChecking={accountChecking} sessionKey={accountSessionKey} commentsApi={mobile.comments} onLogin={login} onOpenSource={() => void run(() => mobile.openSource())} /></div>}
+      {tab === 'comments' && !current && <Empty icon={<MessageCircle size={30} />} title="先选择一首歌" text="播放后可以查看原视频评论区。" />}
       {tab === 'settings' && <>
         <div className="page-intro"><span className="eyebrow">MAKE IT YOURS</span><h1>听歌设置</h1><p>习惯的方式，舒服的声音。</p></div>
         <UpdateCard update={updates} />
@@ -513,16 +550,17 @@ export default function App() {
         <div className="settings-card"><div className="settings-label"><Music2 size={19} /><span><strong>默认歌词来源</strong><small>切换后，也会记住你的选择</small></span></div><div className="setting-options"><button className={provider === 'bilibili' ? 'selected' : ''} onClick={() => setSource('bilibili')}><span>Bilibili 字幕<small>与视频对应，优先使用</small></span>{provider === 'bilibili' && <Check size={19} />}</button><button className={provider === 'lrclib' ? 'selected' : ''} onClick={() => setSource('lrclib')}><span>搜索歌词<small>来自 LRCLIB，可逐首校准</small></span>{provider === 'lrclib' && <Check size={19} />}</button></div></div>
         <div className="settings-card"><div className="settings-label"><Repeat size={19} /><span><strong>播放模式</strong><small>{modeLabel[library?.settings.playMode ?? 'sequence']}</small></span><button className="text-button" onClick={cycleMode} disabled={!canUse}>切换<ChevronRight size={16} /></button></div></div>
         <div className="settings-card saved-note"><Check size={20} /><span><strong>你的音乐，会被记住</strong><p>收藏、歌单、播放历史、队列、音量和歌词校准都保存在这台手机上。手机版与 PC 版各自独立。</p></span></div>
-        <div className="about"><span className="brand-icon"><AudioLines size={25} /></span><strong>余音 · 手机版</strong><span>版本 {packageInfo.version} · Android 预览版</span><p>给生活，留一点余音。</p></div>
+        <section className="settings-card theme-settings"><div className="settings-label"><Settings2 size={19} /><span>界面主题</span></div><div className="setting-options">{([{ id: 'classic', label: '经典配色', detail: '保留米白与鼠尾草绿' }, { id: 'bilibili', label: 'Bilibili', detail: '粉白配色' }, { id: 'system', label: '跟随系统', detail: '随手机切换浅色与深色' }, { id: 'pixel', label: '像素风', detail: '方角、格线与像素阴影' }] as const).map(theme => <button key={theme.id} className={(preferences?.theme ?? 'classic') === theme.id ? 'selected' : ''} aria-pressed={(preferences?.theme ?? 'classic') === theme.id} disabled={!canUse} onClick={() => void run(() => mutatePreferences(state => ({ ...state, theme: theme.id })))}><span>{theme.label}<small>{theme.detail}</small></span>{(preferences?.theme ?? 'classic') === theme.id && <Check size={18} />}</button>)}</div></section>
+        <div className="about"><span className="brand-icon"><AudioLines size={25} /></span><strong>open音乐 · 手机版</strong><span>版本 {packageInfo.version} · Android 预览版</span><p>给生活，留一点余音。</p></div>
       </>}
     </main>}
 
-    {current && tab !== 'player' && !(isAndroid && !account.loggedIn) && <div className="mini-player"><button className="mini-song" onClick={() => setTab('player')} aria-label="打开正在播放与歌词"><Cover song={current} /><span><strong>{current.title}</strong><small>{current.artist}</small></span></button><button className="icon-button mini-play" onClick={togglePlay} disabled={busy} aria-label={playing ? '暂停' : '播放'}>{busy ? <LoaderCircle className="spin" size={23} /> : playing ? <Pause size={23} fill="currentColor" /> : <Play size={23} fill="currentColor" />}</button><button className="icon-button" onClick={() => { setTab('player'); setPlayerPane('queue') }} aria-label="打开播放队列"><ListMusic size={22} /></button><span className="mini-progress" style={{ width: `${Math.min(100, status.currentTime / Math.max(1, status.duration || current.duration) * 100)}%` }} /></div>}
-    {!(isAndroid && !account.loggedIn) && <nav className="bottom-nav" aria-label="主导航">{([{ id: 'search', label: '发现', Icon: Search }, { id: 'library', label: '音乐库', Icon: Library }, { id: 'player', label: '正在听', Icon: AudioLines }, { id: 'settings', label: '设置', Icon: Settings2 }] as const).map(({ id, label, Icon }) => <button key={id} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => { setTab(id); setAccountMenu(false) }}><Icon size={22} /><span>{label}</span></button>)}</nav>}
+    {current && tab !== 'player' && !(isAndroid && !account.loggedIn && !guest) && <div className="mini-player"><button className="mini-song" onClick={() => setTab('player')} aria-label="打开正在播放与歌词"><Cover song={current} /><span><strong>{current.title}</strong><small>{current.artist}</small></span></button><button className="icon-button mini-play" onClick={togglePlay} disabled={busy} aria-label={playing ? '暂停' : '播放'}>{busy ? <LoaderCircle className="spin" size={23} /> : playing ? <Pause size={23} fill="currentColor" /> : <Play size={23} fill="currentColor" />}</button><button className="icon-button" onClick={() => { setTab('player'); setPlayerPane('queue') }} aria-label="打开播放队列"><ListMusic size={22} /></button><span className="mini-progress" style={{ width: `${Math.min(100, status.currentTime / Math.max(1, status.duration || current.duration) * 100)}%` }} /></div>}
+    {!(isAndroid && !account.loggedIn && !guest) && <nav className="bottom-nav" aria-label="主导航">{([{ id: 'search', label: '发现', Icon: Search }, { id: 'library', label: '音乐库', Icon: Library }, { id: 'player', label: '正在听', Icon: AudioLines }, { id: 'settings', label: '设置', Icon: Settings2 }] as const).map(({ id, label, Icon }) => <button key={id} className={tab === id || tab === 'comments' && id === 'player' ? 'active' : ''} aria-current={tab === id || tab === 'comments' && id === 'player' ? 'page' : undefined} onClick={() => { setTab(id); setAccountMenu(false) }}><Icon size={22} /><span>{label}</span></button>)}</nav>}
 
     {dialog && <div className="sheet-backdrop" onClick={() => { if (!dialogBusy) setDialog(null) }}><section className="sheet" role="dialog" aria-modal="true" aria-label={dialog.type === 'create' ? '新建歌单' : dialog.type === 'rename' ? '重命名歌单' : dialog.type === 'delete' ? '删除歌单' : dialog.type === 'folders' ? 'Bilibili 收藏夹' : '歌曲操作'} onClick={event => event.stopPropagation()}><span className="sheet-handle" /><button className="icon-button sheet-close" aria-label="关闭" disabled={dialogBusy} onClick={() => setDialog(null)}><X size={21} /></button>
       {(dialog.type === 'create' || dialog.type === 'rename' || dialog.type === 'delete') && <form onSubmit={event => void submitDialog(event)}><h2>{dialog.type === 'create' ? '新建歌单' : dialog.type === 'rename' ? '重命名歌单' : '删除这份歌单？'}</h2><p>{dialog.type === 'delete' ? `「${dialog.name}」将从本地歌单中移除。歌曲收藏和历史仍会保留。` : '给喜欢的声音，起一个好听的名字。'}</p>{dialog.type !== 'delete' && <input className="name-input" aria-label="歌单名称" placeholder="输入歌单名称" value={dialogName} onChange={event => setDialogName(event.target.value)} maxLength={80} required autoComplete="off" />}<button className={`primary-button wide ${dialog.type === 'delete' ? 'danger' : ''}`} disabled={dialogBusy || (dialog.type !== 'delete' && !dialogName.trim())}>{dialogBusy ? <LoaderCircle className="spin" size={18} /> : dialog.type === 'delete' ? <Trash2 size={18} /> : <Check size={18} />}{dialog.type === 'delete' ? '删除歌单' : '保存歌单'}</button></form>}
-      {dialog.type === 'song' && <><div className="sheet-song"><Cover song={dialog.song} /><span><strong>{dialog.song.title}</strong><small>{dialog.song.artist}</small></span></div><button className="sheet-action" onClick={() => { favoriteSong(dialog.song); setDialog(null) }}><Heart size={20} fill={favorites.has(dialog.song.bvid) ? 'currentColor' : 'none'} />{favorites.has(dialog.song.bvid) ? '取消收藏' : '收藏这首歌'}</button><button className="sheet-action" onClick={() => setDialog({ type: 'add', song: dialog.song })}><Plus size={20} />加入歌单<ChevronRight size={17} /></button><button className="sheet-action" onClick={() => void run(async () => { await mutateLibrary(state => ({ ...state, queue: state.queue.some(song => song.bvid === dialog.song.bvid) ? state.queue : [...state.queue, dialog.song] })); setDialog(null); setNotice('已加入播放队列') })}><ListMusic size={20} />加入播放队列</button>{dialog.playlistId && <button className="sheet-action destructive" onClick={() => void run(async () => { await mutateLibrary(state => removeFromPlaylist(state, dialog.playlistId!, dialog.song.bvid)); setDialog(null); setNotice('已从歌单移除') })}><Trash2 size={20} />从此歌单移除</button>}<button className="sheet-action" onClick={() => void run(() => mobile.openSource())}><ExternalLink size={20} />打开当前 Bilibili 播放页面</button></>}
+      {dialog.type === 'song' && <><div className="sheet-song"><Cover song={dialog.song} /><span><strong>{dialog.song.title}</strong><small>{dialog.song.artist}</small></span></div><button className="sheet-action" onClick={() => { favoriteSong(dialog.song); setDialog(null) }}><Heart size={20} fill={favorites.has(dialog.song.bvid) ? 'currentColor' : 'none'} />{favorites.has(dialog.song.bvid) ? '取消收藏' : '收藏这首歌'}</button><button className="sheet-action" onClick={() => setDialog({ type: 'add', song: dialog.song })}><Plus size={20} />加入歌单<ChevronRight size={17} /></button><button className="sheet-action" onClick={() => void run(async () => { await mutateLibrary(state => ({ ...state, queue: state.queue.some(song => song.bvid === dialog.song.bvid) ? state.queue : [...state.queue, dialog.song] })); setDialog(null); setNotice('已加入播放队列') })}><ListMusic size={20} />加入播放队列</button>{dialog.playlistId && <button className="sheet-action destructive" onClick={() => void run(async () => { await mutateLibrary(state => removeFromPlaylist(state, dialog.playlistId!, dialog.song.bvid)); setDialog(null); setNotice('已从歌单移除') })}><Trash2 size={20} />从此歌单移除</button>}<button className="sheet-action" onClick={() => void run(() => mobile.openSource())}><MonitorPlay size={20} />打开当前视频 MV</button></>}
       {dialog.type === 'add' && <><h2>加入歌单</h2><p className="sheet-track-name">{dialog.song.title}</p><div className="sheet-list">{library?.playlists.map(item => {
         const added = item.songs.some(song => song.bvid === dialog.song.bvid)
         return <button className="sheet-action" key={item.id} disabled={added || dialogBusy} onClick={() => { setDialogBusy(true); void run(async () => { await mutateLibrary(state => addToPlaylist(state, item.id, dialog.song)); setDialog(null); setNotice(`已加入「${item.name}」`) }).finally(() => setDialogBusy(false)) }}><ListMusic size={21} /><span>{item.name}<small>{item.songs.length} 首歌曲</small></span>{added ? <Check size={18} /> : <Plus size={18} />}</button>

@@ -39,6 +39,8 @@ export function videoToSong(value: unknown, query?: string): Song | null {
     cover: safeAccountAvatar(item.cover ?? item.pic), duration: durationSeconds(item.duration),
     playCount: playCount(item.play), source: 'bilibili', url: `https://www.bilibili.com/video/${bvid}/`,
     ...(query ? { searchQuery: query } : {}),
+    ...(positiveInteger(item.mid ?? record(item.upper)?.mid) ? { uploaderMid: Number(item.mid ?? record(item.upper)?.mid) } : {}),
+    searchTags: plainText(item.tag ?? item.description),
   }
 }
 

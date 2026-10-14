@@ -1,5 +1,20 @@
 # Android 原生验证
 
+## 当前源码：PC 0.5.3 同步
+
+以下新增测试与历史发行版记录分开维护，实际本轮结果见 [QA-PC-SYNC.md](QA-PC-SYNC.md)。只在专门新建、无真实账号和日常音乐库的测试实例运行，不清空旧设备来满足条件。
+
+```powershell
+# 修改设备编号为自己的专用实例；先构建并安装 Debug / androidTest 包
+adb -s emulator-5562 shell am instrument -w -r -e class com.yuyin.music.mobile.ControlledCommentsTest,com.yuyin.music.mobile.ControlledAppearanceTest -e yuyinControlledEmulator true com.yuyin.music.mobile.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`ControlledCommentsTest` 使用包内传输依赖和内存响应验证真实原生评论流程，不使用 CookieManager、不联网、不向 Bilibili 写入。覆盖已读取评论绑定视频 / 会话、正确账号单次 POST、错误账号 / 未读取目标 / 会话变化拒绝、失败不重发、回复根关系和新评论目标登记。Release 没有测试响应开关或通用 POST 桥接。
+
+`ControlledAppearanceTest` 使用 Debug 惰性宿主检查四主题的实际 Android 窗口颜色、导航 / 状态栏图标标记和系统 uiMode。现有 `ControlledPlaybackTest` 增加加载后模拟恢复到 30 秒的归零、播放中突跳回正、MV 显示 / 返回和旧窗口回调回归，并保留后台、锁屏、音频焦点、生命周期与私有窗口资源释放检查。只有完整媒体流程通过才读取该次 evidence 文件；WebView 受控媒体不能代替真实 Bilibili / 真机长期播放验收。
+
+## 历史基线与复现
+
 本文记录 0.1.2 的受控原生测试入口与验证边界。历史 0.1.0 的 WAV 后台测试及具体时间保留在 [0.1.0 验证记录](QA.md)；不能直接作为本次修复的通过证据。0.1.2 的实际结果见 [本轮验证记录](QA-0.1.2.md)。
 
 本轮使用从发行模板新建的独立 LDPlayer Android 9（API 28）x86_64 实例 `emulator-5556`，WebView 91.0.4472.114。没有启动、复制或读取原有模拟器的账号、音乐库、设置，也没有导入 PC 登录会话。测试设备编号仅是本轮环境标识，复现时须替换为自己明确选定的独立模拟器。

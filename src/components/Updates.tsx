@@ -52,7 +52,7 @@ export function UpdateCard({ update, compact = false }: { update: UpdateControls
   const installable = ['ready', 'permissionRequired', 'installing'].includes(state.state)
   const summary = state.state === 'checking' ? '正在检查更新…' : state.state === 'upToDate' ? '已经是最新版本' : state.state === 'downloading' ? `正在下载 ${Math.round(state.progress ?? 0)}%` : state.state === 'ready' ? '下载完成，可以安装' : state.state === 'permissionRequired' ? '请允许安装更新，再返回继续' : state.state === 'installing' ? '请在系统页面确认安装' : state.state === 'error' ? state.message : state.update ? `发现新版 ${state.update.version}` : '自动检查新版，由你选择更新'
   return <section className={`settings-card update-card ${compact ? 'update-banner' : ''}`} aria-label="软件更新">
-    <div className="settings-label"><Download size={19} /><span><strong>{state.update ? `余音 ${state.update.version} 可更新` : '软件更新'}</strong><small>{summary}</small></span>{compact && <button className="icon-button" onClick={update.dismiss} aria-label="稍后更新"><X size={18} /></button>}</div>
+    <div className="settings-label"><Download size={19} /><span><strong>{state.update ? `open音乐 ${state.update.version} 可更新` : '软件更新'}</strong><small>{summary}</small></span>{compact && <button className="icon-button" onClick={update.dismiss} aria-label="稍后更新"><X size={18} /></button>}</div>
     {!compact && <p className="update-version">当前版本 {state.currentVersion} · Android</p>}
     {!!state.update?.notes && <p className="update-notes">{state.update.notes}</p>}
     {state.state === 'downloading' && <progress max={100} value={state.progress ?? 0} aria-label="更新下载进度" />}

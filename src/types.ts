@@ -7,6 +7,8 @@ export interface Song {
   cover: string;
   duration: number;
   playCount: number;
+  uploaderMid?: number;
+  searchTags?: string;
   source: 'bilibili';
   url: string;
   /** Original search text helps match lyrics; artist is the video's UP name. */

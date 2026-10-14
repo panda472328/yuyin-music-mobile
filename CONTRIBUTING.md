@@ -1,6 +1,6 @@
 # 参与贡献
 
-这个仓库只维护余音 Android 版；PC 版在 [yuyin-music](https://github.com/panda472328/yuyin-music)。问题、修改和发布记录按平台分别管理。项目源码采用 [MIT 许可证](LICENSE)。
+这个仓库只维护 open音乐 Android 版；PC 版在 [yuyin-music](https://github.com/panda472328/yuyin-music)。问题、修改和发布记录按平台分别管理。项目源码采用 [MIT 许可证](LICENSE)。
 
 ## 报告问题
 

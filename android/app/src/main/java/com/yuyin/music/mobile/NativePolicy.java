@@ -41,9 +41,10 @@ final class NativePolicy {
     private static boolean allowedEndpoint(String host, String path) {
         if (path == null) return false;
         if (host.equals("api.bilibili.com")) return path.equals("/x/web-interface/nav") ||
-                path.equals("/x/web-interface/search/type") || path.equals("/x/web-interface/view") ||
+                path.equals("/x/web-interface/search/type") || path.equals("/x/space/wbi/arc/search") || path.equals("/x/v2/reply") || path.equals("/x/v2/reply/reply") || path.equals("/x/web-interface/view") ||
                 path.equals("/x/player/wbi/v2") || path.equals("/x/player/v2") ||
                 path.equals("/x/v3/fav/folder/created/list-all") || path.equals("/x/v3/fav/resource/list");
+        if (host.equals("s.search.bilibili.com")) return path.equals("/main/suggest");
         if (host.equals("lrclib.net")) return path.equals("/api/search") || path.equals("/api/get");
         if (host.equals("aisubtitle.hdslb.com")) return path.startsWith("/bfs/ai_subtitle/");
         return host.matches("i[0-3]\\.hdslb\\.com") && path.startsWith("/bfs/subtitle/");

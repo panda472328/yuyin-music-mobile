@@ -55,6 +55,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     private final ExecutorService storeIo = Executors.newSingleThreadExecutor();
     private final ExecutorService updateIo = Executors.newSingleThreadExecutor();
     private UpdateManager updates;
+    private final CommentTargets commentTargets = new CommentTargets();
     private Dialog dialog;
     private WebView loginView;
     private String loginCookieSignature;
@@ -201,6 +202,47 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         notifyListeners("ended", event, true);
     }
 
+    @PluginMethod public void setAppearance(PluginCall call) {
+        String theme = call.getString("theme", "classic");
+        if (!(theme.equals("classic") || theme.equals("bilibili") || theme.equals("system") || theme.equals("pixel"))) { call.reject("主题参数无效。", "INVALID_THEME"); return; }
+        main.post(() -> {
+            boolean dark = theme.equals("system") && (getContext().getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            String background = theme.equals("system") ? dark ? "#17191d" : "#f7f7f7" : theme.equals("bilibili") ? "#f8f9fc" : theme.equals("pixel") ? "#f3f8f3" : "#f7f8f3";
+            Window window = getActivity().getWindow();
+            int color = Color.parseColor(background);
+            window.setStatusBarColor(color);
+            window.setNavigationBarColor(Build.VERSION.SDK_INT >= 26 || dark ? color : Color.parseColor("#273a35"));
+            int flags = window.getDecorView().getSystemUiVisibility();
+            flags = dark ? flags & ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags | android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) flags = dark ? flags & ~android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : flags | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            window.getDecorView().setSystemUiVisibility(flags);
+            getBridge().getWebView().setBackgroundColor(color);
+            JSObject result = new JSObject(); result.put("dark", dark); call.resolve(result);
+        });
+    }
+
+    @PluginMethod public void mutateComment(PluginCall call) {
+        main.post(() -> {
+            if (destroyed) { call.reject("页面已关闭。", "PLUGIN_DISPOSED"); return; }
+            final String cookies = CookieManager.getInstance().getCookie("https://api.bilibili.com/");
+            final String signature = NativePolicy.authenticationSignature(cookies);
+            final JSObject args = call.getData();
+            io.execute(() -> {
+                try {
+                    JSObject result = BilibiliCommentActions.execute(args, cookies, () -> !destroyed && signature.equals(authenticationCookieSignature()), commentTargets);
+                    main.post(() -> {
+                        if (destroyed) return;
+                        if (!signature.equals(authenticationCookieSignature())) call.reject("账号已变化，请到源站核对发送结果。", "BILIBILI_SESSION_CHANGED");
+                        else call.resolve(result);
+                    });
+                } catch (Exception failure) {
+                    String text = failure instanceof IllegalArgumentException ? failure.getMessage() : "评论操作未确认成功，请刷新核对结果，避免重复发送。";
+                    main.post(() -> { if (!destroyed) call.reject(text, "COMMENT_OPERATION_FAILED"); });
+                }
+            });
+        });
+    }
+
     @PluginMethod public void request(PluginCall call) {
         final URI uri;
         try { uri = NativePolicy.requestUri(call.getString("url")); }
@@ -218,7 +260,8 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         try {
             connection = (HttpURLConnection) uri.toURL().openConnection();
             connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
+            int timeout = Math.max(1000, Math.min(15000, call.getInt("timeoutMs", 15000)));
+            connection.setConnectTimeout(timeout); connection.setReadTimeout(timeout);
             connection.setRequestMethod("GET");
             connection.setRequestProperty("User-Agent", NativePolicy.DESKTOP_UA);
             connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
@@ -244,6 +287,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
                 }
             }
             String body = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+            if (status == 200) commentTargets.remember(uri, body, requestSession);
             Map<String, List<String>> headers = connection.getHeaderFields();
             main.post(() -> {
                 if (uri.getHost().equals("api.bilibili.com")) {
@@ -367,7 +411,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         LinearLayout bar = new LinearLayout(getActivity()); bar.setPadding(18, 12, 18, 10);
         TextView label = new TextView(getActivity()); label.setText(title); label.setTextColor(Color.BLACK); label.setTextSize(17);
         bar.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Button close = new Button(getActivity()); close.setText("返回余音"); close.setOnClickListener(view -> surface.dismiss());
+        Button close = new Button(getActivity()); close.setText("返回 open音乐"); close.setOnClickListener(view -> surface.dismiss());
         bar.addView(close); layout.addView(bar);
         TextView instruction = new TextView(getActivity()); instruction.setText(tip); instruction.setTextColor(Color.DKGRAY); instruction.setPadding(20, 0, 20, 12);
         layout.addView(instruction); return layout;
@@ -389,7 +433,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         main.post(() -> {
             if (destroyed || getActivity().isFinishing()) { call.reject("页面已关闭。", "PLUGIN_DISPOSED"); return; }
             Dialog surface = newDialog(call); if (surface == null) return;
-            LinearLayout layout = dialogLayout(surface, "Bilibili 官方登录", "官方账号验证成功后会自动返回余音，也可以点“返回余音”手动验证。余音不保存你的密码。");
+            LinearLayout layout = dialogLayout(surface, "Bilibili 官方登录", "官方账号验证成功后会自动返回 open音乐，也可以点“返回 open音乐”手动验证。open音乐不保存你的密码。");
             WebView remote = new WebView(getActivity()); loginView = remote;
             loginGeneration++;
             loginVerificationPending = false; lastLoginCheck = 0;
@@ -438,7 +482,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
             PlaybackService service = PlaybackService.current();
             if (service == null || service.status().optString("state").equals("idle")) { call.reject("请先选择歌曲。", "NO_SONG"); return; }
             Dialog surface = newDialog(call); if (surface == null) return;
-            LinearLayout layout = dialogLayout(surface, "Bilibili 原视频", "这是当前歌曲的官方页面。返回余音后，音源会继续保留。");
+            LinearLayout layout = dialogLayout(surface, "Bilibili 原视频", "MV 使用当前视频，不重新加载音源；返回后继续后台播放。");
             FrameLayout sourceFrame = new FrameLayout(getActivity());
             layout.addView(sourceFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
             service.showSource(sourceFrame, getActivity());
@@ -449,8 +493,12 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
             showFullscreen(surface, layout);
         });
     }
+    @Override protected void handleOnConfigurationChanged(android.content.res.Configuration configuration) {
+        notifyListeners("appearanceChanged", new JSObject());
+    }
     @Override protected void handleOnResume() {
         main.post(() -> {
+            notifyListeners("appearanceChanged", new JSObject());
             PlaybackService service = PlaybackService.current();
             if (service != null) { service.attachActivity(getActivity()); onStatus(service.status()); }
             verifyLoginSession();
