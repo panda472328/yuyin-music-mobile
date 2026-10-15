@@ -392,8 +392,6 @@ public final class PlaybackService extends Service {
         evaluationPending = false;
         if (source == null) createSource();
         source.stopLoading();
-        // The old document must stop sounding before navigation starts. Future callbacks are generation guarded.
-        source.evaluateJavascript("(function(){document.querySelectorAll('video,audio').forEach(function(v){v.muted=true;v.pause();});})()", null);
         song = selected;
         playbackSessionSignature = NativePolicy.authenticationSignature(CookieManager.getInstance().getCookie("https://api.bilibili.com/"));
         if (!java.util.Objects.equals(lyricCacheSession, playbackSessionSignature)) { lyricCache.clear(); lyricCacheSession = playbackSessionSignature; }
@@ -407,7 +405,14 @@ public final class PlaybackService extends Service {
             return;
         }
         if (visibleSource == null && source.getParent() != holder) attachTo(holder);
-        source.loadUrl("https://www.bilibili.com/video/" + selected.optString("bvid") + "/");
+        // Retire the old document before starting navigation. Replaying the same BV must not
+        // resolve against its previous video while the replacement page is still loading.
+        final WebView expectedSource = source;
+        final long expectedGeneration = generation;
+        source.evaluateJavascript("(function(){window.__yuyinRetiredSource=true;document.querySelectorAll('video,audio').forEach(function(v){v.muted=true;v.pause();});})()", ignored -> {
+            if (!destroyed && source == expectedSource && generation == expectedGeneration)
+                expectedSource.loadUrl("https://www.bilibili.com/video/" + selected.optString("bvid") + "/");
+        });
         loadFloatingLyrics();
         publish(true);
     }
@@ -598,6 +603,11 @@ public final class PlaybackService extends Service {
                 final long endedGeneration = generation;
                 main.post(() -> { if (!destroyed && generation == endedGeneration && "ended".equals(state)) skip(1, true, null); });
             }
+            return;
+        }
+        String blocked = snapshot.optString("blocked", "");
+        if (desiredPlayback && !blocked.isEmpty() && !"null".equals(blocked)) {
+            fail(blocked + "，请先登录 Bilibili，再重新选择歌曲。", "BILIBILI_VERIFICATION_REQUIRED", expectedGeneration);
             return;
         }
         if (!desiredPlayback) {

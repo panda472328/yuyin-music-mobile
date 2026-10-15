@@ -45,6 +45,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -62,6 +63,9 @@ public class ControlledPlaybackTest {
     private final Context context = instrumentation.getTargetContext();
     private PlaybackService service;
     private WebView source;
+    private volatile String transportHtml;
+    private volatile CountDownLatch navigationGate;
+    private volatile CountDownLatch navigationEntered;
     private final JSONObject evidence = new JSONObject();
     private void onMain(Runnable action) { instrumentation.runOnMainSync(action); }
     private JSObject snapshot() {
@@ -118,9 +122,8 @@ public class ControlledPlaybackTest {
     }
     private void localPlay(JSObject selected, String html, Pending result) {
         onMain(() -> {
+            transportHtml = html;
             service.play(selected, result);
-            source.stopLoading();
-            source.loadDataWithBaseURL(selected.optString("url"), html, "text/html", "UTF-8", selected.optString("url"));
         });
     }
     private void shell(String command) throws Exception {
@@ -169,8 +172,14 @@ public class ControlledPlaybackTest {
                 WebViewClient productionClient = source.getWebViewClient();
                 source.setWebViewClient(new WebViewClient() {
                     @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                        if (request.getUrl().getScheme().equals("https") || request.getUrl().getScheme().equals("http"))
+                        if (request.getUrl().getScheme().equals("https") || request.getUrl().getScheme().equals("http")) {
+                            if (request.isForMainFrame()) {
+                                CountDownLatch gate = navigationGate, entered = navigationEntered;
+                                if (gate != null) { if (entered != null) entered.countDown(); try { gate.await(4, TimeUnit.SECONDS); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); } }
+                                return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(transportHtml.getBytes(StandardCharsets.UTF_8)));
+                            }
                             return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
+                        }
                         return null;
                     }
                     @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return productionClient.shouldOverrideUrlLoading(view, request); }
@@ -180,10 +189,9 @@ public class ControlledPlaybackTest {
             });
             Pending interrupted = new Pending(); Pending started = new Pending();
             onMain(() -> {
+                transportHtml = longMedia;
                 service.play(song("BV1ab411c7XY", "QA interrupted generation", 90), interrupted);
                 service.play(song("BV1ab411c7XZ", "QA local HTML5 tone", 90), started);
-                source.stopLoading();
-                source.loadDataWithBaseURL("https://www.bilibili.com/video/BV1ab411c7XZ/", longMedia, "text/html", "UTF-8", "https://www.bilibili.com/video/BV1ab411c7XZ/");
             });
             try { interrupted.result.get(2, TimeUnit.SECONDS); fail("Old play request must be rejected"); }
             catch (ExecutionException expected) { assertEquals("PLAYBACK_INTERRUPTED", expected.getCause().getMessage()); }
@@ -213,6 +221,23 @@ public class ControlledPlaybackTest {
             await(() -> snapshot().optDouble("currentTime") < beforeUnexpectedJump + 3, 5000, "Unexpected source seek was not corrected");
             assertEquals("true", evaluate("document.querySelector('video').currentTime<" + (beforeUnexpectedJump + 3)));
             evidence.put("unexpectedSourceSeekCorrected", true);
+
+            Pending moved = new Pending(); onMain(() -> service.seek(35, moved)); complete(moved, 5, "Seek before same-video replay");
+            evaluate("window.qaOldDocument=true");
+            navigationGate = new CountDownLatch(1); navigationEntered = new CountDownLatch(1);
+            Pending replay = new Pending();
+            onMain(() -> service.play(song("BV1ab411c7XZ", "QA replay same BV", 90), replay));
+            try {
+                assertTrue("Replacement navigation did not start", navigationEntered.await(4, TimeUnit.SECONDS));
+                SystemClock.sleep(600);
+                assertFalse("Replay resolved from the old media document", replay.result.isDone());
+                assertEquals("loading", snapshot().optString("state"));
+                assertEquals(0, snapshot().optDouble("currentTime"), .01);
+            } finally { navigationGate.countDown(); navigationGate = null; navigationEntered = null; }
+            complete(replay, 15, "Replay same video with a fresh document");
+            assertTrue(snapshot().optDouble("currentTime") < 3);
+            assertEquals("undefined", evaluate("typeof window.qaOldDocument" ).replace("\"", ""));
+            evidence.put("sameVideoReplayUsesFreshDocument", true);
 
             Pending seek = new Pending(); onMain(() -> service.seek(10, seek)); complete(seek, 5, "Seek controlled MP4 to 10s");
             await(() -> snapshot().optDouble("currentTime") >= 10, 4000, "Seek did not use actual media position");
@@ -269,6 +294,7 @@ public class ControlledPlaybackTest {
             evidence.put("siteVisibilityAndPagehideDoNotPause", true);
 
             // A pause from the source controls is still a real user pause, never an automatic retry.
+            evaluate("document.body.insertAdjacentHTML('beforeend','<div class=\"bili-mini-mask\" style=\"display:none\"><div class=\"login-scan-title\">Synthetic login</div></div>')");
             evaluate("document.querySelector('video').pause()");
             await(() -> snapshot().optString("state").equals("paused"), 5000, "Source user pause was ignored");
             double sourcePausedAt = snapshot().optDouble("currentTime");
@@ -278,6 +304,7 @@ public class ControlledPlaybackTest {
             assertFalse(wakeHeld());
             Pending sourceResume = new Pending(); onMain(() -> service.resume(sourceResume)); complete(sourceResume, 10, "Resume controlled MP4 after source pause");
             evidence.put("sourceUserPausePreserved", true);
+            evaluate("document.querySelector('.bili-mini-mask').remove()");
 
             double beforeBackground = snapshot().optDouble("currentTime");
             assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME));
@@ -349,6 +376,12 @@ public class ControlledPlaybackTest {
             assertTrue("Destroyed Activity must not stop service media", destroyedDelta > 1.5);
             assertEquals("true", evaluate("!document.querySelector('video').paused"));
             evidence.put("activityDestroyedSecondsAdvanced", destroyedDelta);
+
+            evaluate("document.body.insertAdjacentHTML('beforeend','<div class=\"bili-mini-mask\" style=\"position:fixed;inset:0\"><div class=\"login-scan-title\">Synthetic login</div></div>');document.querySelector('video').pause()");
+            await(() -> "error".equals(snapshot().optString("state")), 5000, "Visible source login did not report verification");
+            assertEquals("BILIBILI_VERIFICATION_REQUIRED", snapshot().optString("errorCode"));
+            SystemClock.sleep(700); assertEquals("true", evaluate("document.querySelector('video').paused"));
+            evidence.put("visibleSourceLoginRequiresUserAction", true);
 
             Pending ending = new Pending(); localPlay(song("BV1ab411c7Xa", "QA ending", 2), mediaHtml(2), ending);
             complete(ending, 10, "Play controlled ending WAV after Activity destroy");

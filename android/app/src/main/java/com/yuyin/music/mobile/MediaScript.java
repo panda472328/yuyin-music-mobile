@@ -34,7 +34,8 @@ final class MediaScript {
                 ",volume:" + volume + ",value:" + value + "}";
         return "(function(){const a=" + args + ";" +
                 "const empty={found:false,paused:true,ended:false,currentTime:0,duration:0,readyState:0,playing:false,mediaError:0};" +
-                documentCheck() + "return JSON.stringify(Object.assign(empty,{navigationMismatch:true}));" + visibilityGuard() +
+                documentCheck() + "return JSON.stringify(Object.assign(empty,{navigationMismatch:true}));" +
+                "if(window.__yuyinRetiredSource)return JSON.stringify(empty);" + visibilityGuard() +
                 "const key='__yuyinNativeMedia';const m=window[key]||(window[key]={video:null,ended:false,error:0,volume:a.volume,playing:false,lastTime:0});" +
                 "if(!m.captureInstalled){window.addEventListener('ended',function(e){if(e.target!==m.video)return;m.ended=true;m.playing=false;m.video.pause();m.video.muted=true;e.stopImmediatePropagation();},true);m.captureInstalled=true;}" +
                 "const v=document.querySelector('.bpx-player-video-wrap video')||document.querySelector('.bilibili-player-video video')||document.querySelector('video');" +
@@ -47,6 +48,8 @@ final class MediaScript {
                 MediaTimeline.guard() +
                 "if(a.command==='play'){m.ended=false;m.volume=a.volume;m.playError=null;v.volume=a.volume;v.muted=false;try{const p=v.play();if(p&&p.then)p.then(function(){if(m.video===v)m.playing=!v.paused;}).catch(function(e){if(m.video===v)m.playError=e&&e.message?e.message:String(e);});}catch(e){m.playError=e.message||String(e);}}" +
                 "if(!v.paused&&v.currentTime>m.lastTime+0.01)m.playing=true;m.lastTime=v.currentTime;" +
-                "return JSON.stringify({found:true,paused:v.paused,ended:m.ended||v.ended,currentTime:Number.isFinite(v.currentTime)?v.currentTime:0,duration:Number.isFinite(v.duration)?v.duration:0,readyState:v.readyState,playing:m.playing,mediaError:v.error?v.error.code:m.error,playError:m.playError||null});})()";
+                "const gate=document.querySelector('.bili-mini-mask');let blocked=null;" +
+                "if(v.paused&&gate&&gate.querySelector('.login-scan-title,.login-pwd-title')){const s=getComputedStyle(gate),r=gate.getBoundingClientRect();if(s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0)blocked='源视频已弹出 Bilibili 登录窗口';}" +
+                "return JSON.stringify({found:true,paused:v.paused,ended:m.ended||v.ended,blocked:blocked,currentTime:Number.isFinite(v.currentTime)?v.currentTime:0,duration:Number.isFinite(v.duration)?v.duration:0,readyState:v.readyState,playing:m.playing,mediaError:v.error?v.error.code:m.error,playError:m.playError||null});})()";
     }
 }
