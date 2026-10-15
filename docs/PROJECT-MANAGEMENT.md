@@ -4,7 +4,7 @@ PC 版与手机版使用独立工作目录和独立 Git 仓库，两个仓库可
 
 | 项目 | 仓库 | 应用标识 | 当前版本 |
 | --- | --- | --- | --- |
-| PC 版 | [yuyin-music](https://github.com/panda472328/yuyin-music) | `com.yuyin.music` | `0.5.3` |
+| PC 版 | [yuyin-music](https://github.com/panda472328/yuyin-music) | `com.yuyin.music` | `0.5.4` |
 | Android 版 | [yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile) | `com.yuyin.music.mobile` | `0.1.5` / versionCode `6` |
 
 GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认当前项目。不把 PC 仓库覆盖成手机版，也不把手机目录放成 PC 仓库中的嵌套工程。共同视觉规范的变更在两个仓库分别修改、验证和提交。
