@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "platform": "android",
-  "version": "0.1.4",
-  "versionCode": 5,
+  "version": "0.1.5",
+  "versionCode": 6,
   "artifact": {
-    "url": "https://github.com/panda472328/yuyin-music-mobile/releases/download/android-v0.1.4/Yuyin-Mobile-0.1.4.apk",
-    "sha256": "dcb0b43bc208450a5172663fa24c6c3852d288196aaa28a5c4c38f69eaf50f8c",
-    "size": 3371835
+    "url": "https://github.com/panda472328/yuyin-music-mobile/releases/download/android-v0.1.5/Yuyin-Mobile-0.1.5.apk",
+    "sha256": "eaac052c9fb797889c77bbfc34b9f0a0158768708ffa373b85a65c18c86ae744",
+    "size": 5114211
   },
-  "releaseNotesUrl": "https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.4",
-  "notes": "- 2026-10-15 回归：修复重复播放同一 BV 时，新页面尚未加载就采用旧页面进度并提前报告播放成功的问题；导航前停用旧文档，迟到的旧请求不能启动新导航。\n- 原视频暂停且显示 Bilibili 登录弹层时明确提示登录验证；隐藏的登录组件和普通用户暂停不触发该提示。实测与回归见 `docs/QA-PLAYBACK-20261015.md`。\n- 展示名更新为 open音乐；保留 Android 应用 ID、独立数据、签名身份和兼容产物名。\n- 新增经典、Bilibili、跟随系统明暗、像素四套主题，保存主题与搜索模式，适配 Android 系统栏和 WebView 91。\n- 歌名 / 视频双模式搜索；歌名支持官方联想，优先召回音乐 UP 主非 DJ 单曲，按播放量排序后衔接合集和其他结果，不显示分类。视频沿用官方顺序，切换保留输入，搜索不自动播放。\n- 新增游客入口；账号收藏夹导入、点赞、评论与回复仍验证当前账号。\n- 自动读取原视频评论和回复，支持热门 / 最新、分页、点赞、评论和回复；原生验证视频、账号与已读取目标，失败保留草稿，不自动重发。\n- MV 入口复用现有音源 WebView；选曲归零并纠正异常进度跳转，保留用户拖动与系统媒体控制。\n- 补齐睡眠定时、静音音量恢复、播放队列删除与确认清空、JSON 备份导出 / 预览 / 合并恢复；支持 PC 歌库 JSON 和手机版主题、搜索模式、歌词校准与悬浮样式。损坏原记录在明确恢复时保留，导入失败不更新界面。\n- Android 原生悬浮歌词支持字体、字号、颜色、透明度、拖动和锁定；透明图标工具栏自动隐藏，锁定后只保留中央解锁。来源、歌词偏移和媒体时间与主界面一致，后台切歌由服务读取歌词。\n- 通知栏、锁屏和媒体键增加上一首 / 下一首；播放结束、历史和睡眠计时改由原生服务处理，主界面暂停或销毁时仍生效。后台历史使用独立日志与歌库合并，避免旧界面保存覆盖后台记录。\n- 保留实体键盘快捷键，Windows 窗口、桌面快捷方式和安装器由 Android 启动器、媒体通知、系统文件选择与安装界面适配。完整对照及验证范围见 `docs/QA-FULL-PARITY.md`。\n- 更新器加入手机版 Gitee 固定 Contents API、正式 APK 附件 API 和受限的 Foruda 跳转，GitHub 保留备用；双源独立超时，优先较新版本，同版本一致时优先国内，同版本冲突停止更新。国内下载失败后仅回退到同版本、同摘要的 GitHub APK；取消下载不启动备用源。\n- 新增匿名国内发布候选工具；完整下载与 GitHub 正式 APK 比较大小和 SHA-256 后，才能生成国内清单候选。国内通道只在正式附件通过校验后启用。\n- Android 版本递增为 0.1.4 / versionCode 5，沿用正式签名和数据目录。0.1.3 用户可先经 GitHub 更新或手动覆盖安装；0.1.2 及更早版本需要手动覆盖安装。升级后可优先通过 Gitee 检查和下载更新，安装仍需 Android 系统确认。",
-  "publishedAt": "2026-10-15T02:45:45.000Z"
+  "releaseNotesUrl": "https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.5",
+  "notes": "- 对齐 PC 新版 Bilibili 粉白蓝主题与“我的世界”灰色物品栏风格，保留经典和跟随系统明暗，设置增加主题预览卡。\n- 播放页、设置与原生悬浮歌词增加经典、聚光、手札、我的世界四款独立预设；预设保存、旧数据兼容和备份恢复保留原字体及歌词校准。\n- 捆绑带完整 OFL 声明的 Fusion Pixel 字体，Android 使用同字形的 OpenType 格式；像素样式禁用字体切换，离开后恢复原选择。\n- 修正小屏及切换样式后当前歌词的居中计算，使用实际元素边界；不改变媒体时间、来源或搜索手动播放。\n- 版本更新为 0.1.5 / versionCode 6，保留既有签名、音乐库、偏好与 Gitee / GitHub 双源更新；覆盖安装无需卸载。源码同步验证见 `docs/QA-UI-SYNC-20261015.md`，本版发布验证另行记录。",
+  "publishedAt": "2026-10-15T08:38:26.000Z"
 }
