@@ -23,6 +23,11 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.app.Activity;
+import android.provider.Settings;
+import android.net.Uri;
+import androidx.activity.result.ActivityResult;
+import com.getcapacitor.annotation.ActivityCallback;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -66,6 +71,9 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     private String loginOpeningSignature;
     private Long loginBaselineIdentity;
     private boolean destroyed;
+    private final SharedPreferences.OnSharedPreferenceChangeListener storeListener = (prefs, key) -> {
+        if (!destroyed && ("background_history".equals(key) || "floating_lyrics".equals(key) || "sleep_until".equals(key))) { JSObject event = new JSObject(); event.put("key", key); main.post(() -> { if (!destroyed) notifyListeners("storeChanged", event); }); }
+    };
     private final Runnable watchLoginSession = new Runnable() {
         @Override public void run() {
             if (destroyed || loginView == null) return;
@@ -187,6 +195,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     }
 
     @Override public void load() {
+        store().registerOnSharedPreferenceChangeListener(storeListener);
         updates = new UpdateManager(getContext(), main, updateIo, value -> { if (!destroyed) notifyListeners("updateState", value, true); });
         PlaybackService.addListener(this);
         main.post(() -> {
@@ -317,9 +326,10 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         String key = call.getString("key");
         if (!NativePolicy.validStoreKey(key)) { call.reject("不支持的数据类型。", "INVALID_STORE_KEY"); return; }
         storeIo.execute(() -> {
-            String data = store().getString(key, null);
-            JSObject result = new JSObject(); result.put("data", data == null ? JSONObject.NULL : data);
-            call.resolve(result);
+            try { synchronized (PlaybackStore.LOCK) {
+                String data = "library".equals(key) ? PlaybackStore.library(getContext()) : store().getString(key, null);
+                JSObject result = new JSObject(); result.put("data", data == null ? JSONObject.NULL : data); call.resolve(result);
+            } } catch (Exception invalid) { call.reject("读取音乐库失败，原记录已保留。", "STORE_READ_FAILED"); }
         });
     }
     @PluginMethod public void writeStore(PluginCall call) {
@@ -329,10 +339,113 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         try { new JSONObject(data); } catch (Exception ignored) { call.reject("保存的数据格式不正确。", "INVALID_STORE_JSON"); return; }
         storeIo.execute(() -> {
             // commit, not apply: a successful promise means the data already reached app-private disk storage.
-            boolean saved = store().edit().putString(key, data).commit();
-            if (!saved) call.reject("保存失败，请检查手机存储空间。", "STORE_WRITE_FAILED");
-            else { JSObject result = new JSObject(); result.put("saved", true); call.resolve(result); }
+            try { synchronized (PlaybackStore.LOCK) {
+                String merged = "library".equals(key) ? PlaybackStore.mergeHistory(getContext(), data) : data;
+                SharedPreferences.Editor edit = store().edit().putString(key, merged); if ("library".equals(key)) edit.remove("background_history");
+                if (!edit.commit()) call.reject("保存失败，请检查手机存储空间。", "STORE_WRITE_FAILED");
+                else { JSObject result = new JSObject(); result.put("saved", true); result.put("data", merged); call.resolve(result); }
+            } } catch (Exception invalid) { call.reject("保存数据格式不正确，原记录已保留。", "INVALID_STORE_JSON"); }
         });
+    }
+
+    @PluginMethod public void skip(PluginCall call) {
+        Integer direction = call.getInt("direction");
+        if (direction == null || (direction != 1 && direction != -1)) { call.reject("切歌方向不正确。", "INVALID_DIRECTION"); return; }
+        withService(call, false, service -> service.skip(direction, false, completion(call)));
+    }
+    @PluginMethod public void getSleepTimer(PluginCall call) {
+        long until = store().getLong("sleep_until", 0); JSObject value = new JSObject(); value.put("until", until > System.currentTimeMillis() ? until : JSONObject.NULL); call.resolve(value);
+    }
+    @PluginMethod public void setSleepTimer(PluginCall call) {
+        Object raw = call.getData().opt("until");
+        double number = raw instanceof Number ? ((Number) raw).doubleValue() : 0;
+        if (raw != null && raw != JSONObject.NULL && (!(raw instanceof Number) || !Double.isFinite(number) || number != Math.floor(number) || number < System.currentTimeMillis() || number > System.currentTimeMillis() + 24 * 60 * 60 * 1000L)) { call.reject("定时必须在未来 24 小时内。", "INVALID_SLEEP_TIMER"); return; }
+        long until = (long) number;
+        storeIo.execute(() -> {
+            synchronized (PlaybackStore.LOCK) { if (!store().edit().putLong("sleep_until", until).commit()) { call.reject("定时保存失败。", "STORE_WRITE_FAILED"); return; } }
+            main.post(() -> { PlaybackService service = PlaybackService.current(); if (service != null) service.scheduleSleep(until); JSObject result = new JSObject(); result.put("until", until > 0 ? until : JSONObject.NULL); call.resolve(result); });
+        });
+    }
+    @PluginMethod public void getFloatingLyrics(PluginCall call) { call.resolve(FloatingLyricsWindow.state(getContext())); }
+    @PluginMethod public void setFloatingLyrics(PluginCall call) {
+        JSONObject value = call.getObject("settings");
+        if (value == null) { call.reject("歌词设置格式不正确。", "INVALID_FLOATING_SETTINGS"); return; }
+        JSONObject normalized = FloatingLyricsWindow.normalize(value);
+        if (normalized.optBoolean("enabled") && !FloatingLyricsWindow.permission(getContext())) { call.reject("请先允许显示在其他应用上层，然后再开启悬浮歌词。", "OVERLAY_PERMISSION_REQUIRED"); return; }
+        storeIo.execute(() -> {
+            if (!FloatingLyricsWindow.save(getContext(), normalized)) { call.reject("悬浮歌词设置保存失败。", "STORE_WRITE_FAILED"); return; }
+            main.post(() -> { PlaybackService service = PlaybackService.current(); if (service != null) service.floatingSettingsChanged(); call.resolve(FloatingLyricsWindow.state(getContext())); });
+        });
+    }
+    @PluginMethod public void requestOverlayPermission(PluginCall call) {
+        main.post(() -> {
+            try { if (!FloatingLyricsWindow.permission(getContext())) getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getContext().getPackageName()))); JSObject result = new JSObject(); result.put("granted", FloatingLyricsWindow.permission(getContext())); call.resolve(result); }
+            catch (Exception unavailable) { call.reject("无法打开权限页面，请在系统应用设置中允许悬浮窗。", "OVERLAY_SETTINGS_UNAVAILABLE"); }
+        });
+    }
+    @PluginMethod public void syncFloatingLyrics(PluginCall call) {
+        String bvid = call.getString("bvid"), provider = call.getString("provider"), fallback = call.getString("fallback", ""); Double offset = call.getDouble("offset");
+        com.getcapacitor.JSArray lines = call.getArray("lines");
+        if (!NativePolicy.validBvid(bvid) || !("bilibili".equals(provider) || "lrclib".equals(provider)) || offset == null || !Double.isFinite(offset) || offset < -120 || offset > 120 || lines == null || lines.length() > 10000 || fallback.length() > 100000) { call.reject("悬浮歌词数据不正确。", "INVALID_FLOATING_LYRICS"); return; }
+        main.post(() -> { try { PlaybackService service = PlaybackService.current(); if (service != null) service.setFloatingLines(bvid, provider, lines, offset, fallback); call.resolve(); } catch (Exception invalid) { call.reject("悬浮歌词时间轴格式不正确。", "INVALID_FLOATING_LYRICS"); } });
+    }
+
+    @PluginMethod public void exportBackup(PluginCall call) {
+        String data = call.getString("data");
+        if (data == null || data.getBytes(StandardCharsets.UTF_8).length > MAX_STORE) { call.reject("备份超过 8 MB。", "BACKUP_TOO_LARGE"); return; }
+        try { JSONObject backup = new JSONObject(data); if (!"yuyin-mobile-backup".equals(backup.optString("kind")) || backup.optInt("schemaVersion") != 1 || !"android".equals(backup.optString("platform"))) throw new Exception(); }
+        catch (Exception invalid) { call.reject("备份格式不正确。", "INVALID_BACKUP"); return; }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, "open音乐-备份-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date()) + ".json");
+        openDocumentPicker(call, intent, "exportBackupResult");
+    }
+    @ActivityCallback private void exportBackupResult(PluginCall call, ActivityResult activity) {
+        documentPickerOpen.set(false);
+        if (call == null) return;
+        Uri uri = activity.getData() == null ? null : activity.getData().getData();
+        if (activity.getResultCode() != Activity.RESULT_OK || uri == null) { JSObject result = new JSObject(); result.put("saved", false); call.resolve(result); return; }
+        io.execute(() -> {
+            try (java.io.OutputStream output = getContext().getContentResolver().openOutputStream(uri, "wt")) {
+                BackupFiles.write(output, call.getString("data")); JSObject result = new JSObject(); result.put("saved", true); call.resolve(result);
+            } catch (Exception failure) { call.reject("备份保存失败，请选择可写的位置。", "BACKUP_EXPORT_FAILED"); }
+        });
+    }
+    @PluginMethod public void importBackup(PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"application/json", "text/plain", "application/octet-stream"});
+        openDocumentPicker(call, intent, "importBackupResult");
+    }
+    @ActivityCallback private void importBackupResult(PluginCall call, ActivityResult activity) {
+        documentPickerOpen.set(false);
+        if (call == null) return;
+        Uri uri = activity.getData() == null ? null : activity.getData().getData();
+        if (activity.getResultCode() != Activity.RESULT_OK || uri == null) { JSObject result = new JSObject(); result.put("data", JSONObject.NULL); call.resolve(result); return; }
+        io.execute(() -> {
+            try (InputStream input = getContext().getContentResolver().openInputStream(uri)) {
+                String data = BackupFiles.read(input); JSObject result = new JSObject(); result.put("data", data); call.resolve(result);
+            } catch (Exception failure) { call.reject("备份读取失败：文件不可读、超过 8 MB 或编码错误。", "BACKUP_IMPORT_FAILED"); }
+        });
+    }
+    private final AtomicBoolean documentPickerOpen = new AtomicBoolean(false);
+    private void openDocumentPicker(PluginCall call, Intent intent, String callback) {
+        if (!documentPickerOpen.compareAndSet(false, true)) { call.reject("文件选择窗口已经打开。", "BACKUP_PICKER_BUSY"); return; }
+        main.post(() -> {
+            try {
+                if (destroyed || getActivity() == null || getActivity().isFinishing()) throw new IllegalStateException();
+                startActivityForResult(call, intent, callback);
+            } catch (Exception unavailable) { documentPickerOpen.set(false); call.reject("无法打开系统文件选择窗口，请返回应用后重试。", "BACKUP_PICKER_UNAVAILABLE"); }
+        });
+    }
+    @PluginMethod public void restoreBackup(PluginCall call) {
+        String library = call.getString("library"), preferences = call.getString("preferences");
+        JSONObject floating = call.getObject("floatingLyrics");
+        try {
+            if (library == null || library.getBytes(StandardCharsets.UTF_8).length > MAX_STORE) throw new Exception(); JSONObject value = new JSONObject(library);
+            if (value.optInt("version") != 1 || value.optJSONArray("favorites") == null || value.optJSONArray("playlists") == null || value.optJSONArray("history") == null || value.optJSONArray("queue") == null || value.optJSONObject("settings") == null) throw new Exception();
+            if (preferences != null && (preferences.getBytes(StandardCharsets.UTF_8).length > 256000 || new JSONObject(preferences).optInt("version") != 1)) throw new Exception();
+        } catch (Exception invalid) { call.reject("备份恢复数据不正确，未保存任何内容。", "INVALID_BACKUP"); return; }
+        storeIo.execute(() -> { try {
+            String merged = PlaybackStore.restore(getContext(), library, preferences, floating);
+            JSObject result = new JSObject(); result.put("saved", true); result.put("data", merged); call.resolve(result);
+        } catch (Exception invalid) { call.reject("备份恢复失败，原记录已保留。", "INVALID_BACKUP"); } });
     }
 
     @PluginMethod public void getStatus(PluginCall call) {
@@ -507,6 +620,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     }
     @Override protected void handleOnDestroy() {
         destroyed = true;
+        store().unregisterOnSharedPreferenceChangeListener(storeListener);
         PlaybackService.removeListener(this);
         if (dialog != null) dialog.dismiss();
         PlaybackService service = PlaybackService.current();

@@ -9,7 +9,7 @@ PC 版与手机版使用独立工作目录和独立 Git 仓库，两个仓库可
 
 GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认当前项目。不把 PC 仓库覆盖成手机版，也不把手机目录放成 PC 仓库中的嵌套工程。共同视觉规范的变更在两个仓库分别修改、验证和提交。
 
-展示品牌统一为 `open音乐`，旧的 Yuyin / yuyin 技术名、包名、存储键、产物名与仓库地址保留。当前手机源码已同步 PC 0.5.3 的主要搜索、主题、评论和 MV 功能，仍处于未发布阶段，公开 APK 为 0.1.3。手机版独立 Gitee 仓库为 [openmusic/openmusic-mobile](https://gitee.com/openmusic/openmusic-mobile)，对应 `gitee` 远程；`origin` 保留手机版 GitHub 仓库。当前源码加入 Gitee / GitHub 双源更新，`updates/stable.json` 继续服务旧 GitHub 客户端，独立 `updates/domestic.json` 必须在 Gitee 同一正式 APK 完整校验后生成和推送；不能提前写入占位附件 ID，也不能把 PC 的 Gitee 地址用于 Android APK。尚未实现的 PC 功能见 README，不将核心同步描述为全部移植。
+展示品牌统一为 `open音乐`，旧的 Yuyin / yuyin 技术名、包名、存储键、产物名与仓库地址保留。当前手机源码已补齐 PC 0.5.3 适用于 Android 的功能，仍处于未发布阶段，公开 APK 为 0.1.3；具体对应实现、系统差异和验证边界见 [QA-FULL-PARITY.md](QA-FULL-PARITY.md)。手机版独立 Gitee 仓库为 [openmusic/openmusic-mobile](https://gitee.com/openmusic/openmusic-mobile)，对应 `gitee` 远程；`origin` 保留手机版 GitHub 仓库。当前源码加入 Gitee / GitHub 双源更新，`updates/stable.json` 继续服务旧 GitHub 客户端，独立 `updates/domestic.json` 必须在 Gitee 同一正式 APK 完整校验后生成和推送；不能提前写入占位附件 ID，也不能把 PC 的 Gitee 地址用于 Android APK。
 
 ## 目录约定
 
@@ -47,6 +47,10 @@ GitHub Desktop 应分别添加上述两个本地仓库，执行操作前确认�
 ## 数据与凭据
 
 Android 音乐库和偏好设置位于该应用的私有存储中，WebView 登录会话由手机独立保存；浏览器开发预览另用独立的本地存储键。没有自动同步 PC 音乐库或 PC 登录会话的功能。
+
+当前源码支持通过系统文件选择器手动导出 / 合并 JSON，PC 裸歌库 JSON 与手机备份均可读取；手机包装格式另外保存主题、搜索模式、歌词偏移和悬浮歌词样式。手机仍有独立会话与版本，备份不含账号凭据。原生私有存储兼容 `yuyin_mobile_data_v1` 中的 `library` / `preferences`，新增 `background_history`、`sleep_until`、`floating_lyrics`；后台历史在下一次界面保存时合并并归并。显式恢复损坏记录时保留对应 `_recovery` 键，不通过重置应用数据修复。
+
+源码验证用的 Debug APK 保存于 `artifacts/testing/`，明确测试用途与校验值，不覆盖 `artifacts/release.json`、既有正式包、标签或稳定更新清单。Debug 身份不能覆盖正式签名版，不能作为正式下载附件发布。
 
 签名密钥、密码、环境变量文件和真实账号凭据不进入 Git。当前 `.gitignore` 排除了 `.jks`、`.keystore`、`.p12`、`signing.properties` 和 `.env` 文件。构建记录可以写签名类型与产物校验值，不记录私钥或 Cookie。
 

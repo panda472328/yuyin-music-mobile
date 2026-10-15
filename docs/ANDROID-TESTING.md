@@ -1,5 +1,21 @@
 # Android 原生验证
 
+## 完整功能同步（2026-10-14 当前源码）
+
+本轮结果见 [QA-FULL-PARITY.md](QA-FULL-PARITY.md)。`ControlledParityTest` 新增 4 项，覆盖受控歌词、备份存储 / 文件流、真实系统文件选择器取消，以及原生后台队列 / 定时 / 悬浮窗触摸。只在明确选定、无真实账号、音乐库与设置的专用 Debug 模拟器运行。测试会临时授予该测试应用悬浮窗权限、旋转并熄屏，结束后恢复测试状态；不连接 Bilibili / LRCLIB，不使用正式签名。
+
+```powershell
+# 配置 JDK / SDK，在 android 目录构建测试包，不加载正式签名
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+
+# 换成自己的专用设备编号，安装以上两个 Debug APK 后运行
+adb -s emulator-5562 shell am instrument -w -r -e class com.yuyin.music.mobile.ControlledParityTest -e yuyinControlledEmulator true com.yuyin.music.mobile.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+完整回归额外选择 `YuyinNativeContractTest,ControlledLoginTest,ControlledPlaybackTest,ControlledCommentsTest,ControlledAppearanceTest`，与新增测试共 15 项。本轮没有跳过；跳过不可算通过。媒体注入、惰性宿主和受控响应仅在 Debug / androidTest 中；浮窗测试使用 UiAutomation 原生输入，网页截图不能替代。
+
+Android 9 受控结果不能确认 Android 12+ 的触摸穿透，也不能确认真机省电和真实源站行为。测试歌词缓存恢复与提供方受控解析分别验证，生产网络中的后台歌词请求另需验收。
+
 ## 国内双源更新（当前源码）
 
 本轮结果见 [QA-DOMESTIC-UPDATES.md](QA-DOMESTIC-UPDATES.md)。`ControlledDomesticUpdateTest` 包含 Contents 解析、双源选择和实际更新器下载 3 项。完整下载流程只在明确指定、没有音乐库 / 偏好的独立 Debug 设备执行；需隔离构建同包名、同 Debug 证书的未来夹具 `1.0.0` / versionCode 100，不能改仓库版本文件或读取正式密钥。当前被测应用为 Debug 0.1.3 / versionCode 4；版本超过夹具时需调整测试与隔离构建，跳过不能记为通过。

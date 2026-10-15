@@ -47,6 +47,8 @@ public final class PlaybackService extends Service {
     static final String ACTION_PAUSE = "com.yuyin.music.mobile.PAUSE";
     static final String ACTION_RESUME = "com.yuyin.music.mobile.RESUME";
     static final String ACTION_STOP = "com.yuyin.music.mobile.STOP";
+    static final String ACTION_NEXT = "com.yuyin.music.mobile.NEXT";
+    static final String ACTION_PREVIOUS = "com.yuyin.music.mobile.PREVIOUS";
     private static final String CHANNEL = "yuyin_playback";
     private static final int NOTIFICATION = 401;
     private static final CopyOnWriteArrayList<WeakReference<Listener>> LISTENERS = new CopyOnWriteArrayList<>();
@@ -90,7 +92,7 @@ public final class PlaybackService extends Service {
     private boolean startAttempted;
     private boolean awaitingStart;
     private boolean evaluationPending;
-    private boolean destroyed;
+    private volatile boolean destroyed;
     private boolean focused;
     private boolean focusRegistered;
     private long focusEpoch;
@@ -105,6 +107,32 @@ public final class PlaybackService extends Service {
     private Completion playCompletion;
     private String previousPublished = "";
     private String previousNotificationState = "";
+    private final java.util.concurrent.ExecutorService extrasIo = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private long historyGeneration = -1;
+    private long sleepUntil;
+    private final Runnable sleepTask = () -> {
+        if (destroyed || sleepUntil == 0) return;
+        if (System.currentTimeMillis() < sleepUntil) { scheduleSleep(sleepUntil); return; }
+        final long expired = sleepUntil;
+        long saved = PlaybackStore.get(this).getLong("sleep_until", 0);
+        if (saved != expired) { scheduleSleep(saved); return; }
+        pause(null); sleepUntil = 0;
+        extrasIo.execute(() -> { synchronized (PlaybackStore.LOCK) {
+            if (PlaybackStore.get(this).getLong("sleep_until", 0) == expired) PlaybackStore.get(this).edit().remove("sleep_until").commit();
+        } });
+    };
+    private FloatingLyricsWindow floatingLyrics;
+    private final java.util.concurrent.ExecutorService lyricsIo = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile java.net.HttpURLConnection lyricConnection;
+    private volatile long lyricsRequest;
+    private final java.util.LinkedHashMap<String, BackgroundLyrics.Result> lyricCache = new java.util.LinkedHashMap<>();
+    private String lyricCacheSession;
+    private final android.content.SharedPreferences.OnSharedPreferenceChangeListener extrasListener = (prefs, key) -> main.post(() -> {
+        if (destroyed) return;
+        if ("floating_lyrics".equals(key)) { floatingSettingsChanged(); loadFloatingLyrics(); }
+        if ("preferences".equals(key)) loadFloatingLyrics();
+        if ("sleep_until".equals(key)) scheduleSleep(prefs.getLong("sleep_until", 0));
+    });
 
     /** Only the service-owned source stays visible to Chromium; the Capacitor UI follows its Activity. */
     private static final class SourceWebView extends WebView {
@@ -147,6 +175,8 @@ public final class PlaybackService extends Service {
             @Override public void onPause() { pause(null); }
             @Override public void onStop() { stopPlayback(); }
             @Override public void onSeekTo(long position) { seek(position / 1000.0, null); }
+            @Override public void onSkipToNext() { skip(1, false, null); }
+            @Override public void onSkipToPrevious() { skip(-1, false, null); }
         }, main);
         mediaSession.setActive(true);
         if (Build.VERSION.SDK_INT >= 26) {
@@ -158,6 +188,13 @@ public final class PlaybackService extends Service {
         // Required immediately after startForegroundService, including while the original page loads.
         startForeground(NOTIFICATION, notification());
         foreground = true;
+        floatingLyrics = new FloatingLyricsWindow(this, () -> status(), action -> {
+            if ("pause".equals(action)) { if (desiredPlayback) pause(null); else resume(null); }
+            if ("next".equals(action)) skip(1, false, null);
+            if ("previous".equals(action)) skip(-1, false, null);
+        });
+        PlaybackStore.get(this).registerOnSharedPreferenceChangeListener(extrasListener);
+        scheduleSleep(PlaybackStore.get(this).getLong("sleep_until", 0));
         createBackgroundHost();
         createSource();
         main.post(poll);
@@ -169,6 +206,8 @@ public final class PlaybackService extends Service {
             if (ACTION_PAUSE.equals(action)) pause(null);
             if (ACTION_RESUME.equals(action)) resume(null);
             if (ACTION_STOP.equals(action)) stopPlayback();
+            if (ACTION_NEXT.equals(action)) skip(1, false, null);
+            if (ACTION_PREVIOUS.equals(action)) skip(-1, false, null);
         }
         return START_NOT_STICKY;
     }
@@ -357,6 +396,7 @@ public final class PlaybackService extends Service {
         source.evaluateJavascript("(function(){document.querySelectorAll('video,audio').forEach(function(v){v.muted=true;v.pause();});})()", null);
         song = selected;
         playbackSessionSignature = NativePolicy.authenticationSignature(CookieManager.getInstance().getCookie("https://api.bilibili.com/"));
+        if (!java.util.Objects.equals(lyricCacheSession, playbackSessionSignature)) { lyricCache.clear(); lyricCacheSession = playbackSessionSignature; }
         state = "loading"; error = null; errorCode = null; currentTime = 0;
         duration = Math.max(0, selected.optDouble("duration", 0));
         desiredPlayback = true; focusPreflightComplete = false; startAttempted = false; awaitingStart = true; stalledSince = 0;
@@ -368,6 +408,7 @@ public final class PlaybackService extends Service {
         }
         if (visibleSource == null && source.getParent() != holder) attachTo(holder);
         source.loadUrl("https://www.bilibili.com/video/" + selected.optString("bvid") + "/");
+        loadFloatingLyrics();
         publish(true);
     }
 
@@ -383,6 +424,76 @@ public final class PlaybackService extends Service {
         read("pause", 0, null);
         publish(true);
         if (completion != null) completion.resolve(status());
+    }
+    void scheduleSleep(long until) {
+        main.removeCallbacks(sleepTask); sleepUntil = until;
+        if (until > 0) main.postDelayed(sleepTask, Math.max(0, until - System.currentTimeMillis()));
+    }
+    void floatingSettingsChanged() { if (floatingLyrics != null) floatingLyrics.refresh(); }
+    void setFloatingLines(String bvid, String expectedProvider, org.json.JSONArray lines, double offset, String fallback) throws Exception {
+        if (song == null || !song.optString("bvid").equals(bvid)) return;
+        JSONObject prefs = new JSONObject(PlaybackStore.get(this).getString("preferences", "{}"));
+        String provider = "lrclib".equals(prefs.optString("lyricsProvider")) ? "lrclib" : "bilibili";
+        if (!provider.equals(expectedProvider)) return;
+        if (floatingLyrics != null) floatingLyrics.setLines(bvid, lines, offset, fallback);
+        lyricCache.put(provider + ":" + bvid, new BackgroundLyrics.Result(new org.json.JSONArray(lines.toString()), fallback));
+        if (lyricCache.size() > 50) lyricCache.remove(lyricCache.keySet().iterator().next());
+        lyricsRequest++; if (lyricConnection != null) lyricConnection.disconnect();
+    }
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (floatingLyrics != null) floatingLyrics.refresh();
+    }
+    private void loadFloatingLyrics() {
+        long token = ++lyricsRequest;
+        if (lyricConnection != null) lyricConnection.disconnect();
+        if (song == null || floatingLyrics == null || !FloatingLyricsWindow.settings(this).optBoolean("enabled") || !FloatingLyricsWindow.permission(this)) return;
+        try {
+            JSONObject prefs = new JSONObject(PlaybackStore.get(this).getString("preferences", "{}"));
+            String provider = "lrclib".equals(prefs.optString("lyricsProvider")) ? "lrclib" : "bilibili", bvid = song.optString("bvid");
+            JSONObject offsets = prefs.optJSONObject("lyricOffsets"); double shift = offsets == null ? ("bilibili".equals(provider) ? -.25 : 0) : offsets.optDouble(provider + ":" + bvid, "bilibili".equals(provider) ? -.25 : 0);
+            BackgroundLyrics.Result cached = lyricCache.get(provider + ":" + bvid);
+            if (cached != null) { floatingLyrics.setLines(bvid, cached.lines, shift, cached.plain); return; }
+            final JSObject selected = new JSObject(song.toString()); final long selectedGeneration = generation; final String session = playbackSessionSignature;
+            lyricsIo.execute(() -> {
+                BackgroundLyrics.Result result;
+                long deadline = SystemClock.elapsedRealtime() + 20000;
+                try { result = BackgroundLyrics.load(selected, provider, url -> lyricRequest(url, token, session, deadline)); }
+                catch (Exception unavailable) { result = new BackgroundLyrics.Result(new org.json.JSONArray(), ""); }
+                final BackgroundLyrics.Result loaded = result;
+                main.post(() -> {
+                    if (destroyed || token != lyricsRequest || generation != selectedGeneration || song == null || !bvid.equals(song.optString("bvid")) || !java.util.Objects.equals(session, playbackSessionSignature)) return;
+                    try { floatingLyrics.setLines(bvid, loaded.lines, shift, loaded.plain); if (loaded.lines.length() > 0 || !loaded.plain.isEmpty()) { lyricCache.put(provider + ":" + bvid, loaded); if (lyricCache.size() > 50) lyricCache.remove(lyricCache.keySet().iterator().next()); } } catch (Exception ignored) {}
+                });
+            });
+        } catch (Exception invalidPreferences) { /* Do not overwrite a damaged settings record. */ }
+    }
+    private String lyricRequest(String address, long token, String expectedSession, long deadline) throws Exception {
+        if (destroyed || token != lyricsRequest || SystemClock.elapsedRealtime() >= deadline) throw new Exception("LYRICS_CANCELLED");
+        java.net.URI uri = NativePolicy.requestUri(address);
+        java.net.HttpURLConnection connection = (java.net.HttpURLConnection) uri.toURL().openConnection(); lyricConnection = connection;
+        try {
+            int remaining = (int) Math.max(1, Math.min(5000, deadline-SystemClock.elapsedRealtime()));
+            connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(remaining); connection.setReadTimeout(remaining); connection.setRequestProperty("User-Agent", NativePolicy.DESKTOP_UA); connection.setRequestProperty("Accept-Encoding", "identity"); connection.setRequestProperty("Accept", "application/json");
+            if ("api.bilibili.com".equals(uri.getHost())) {
+                String cookies = CookieManager.getInstance().getCookie("https://api.bilibili.com/");
+                if (!java.util.Objects.equals(expectedSession, NativePolicy.authenticationSignature(cookies))) throw new Exception("LYRICS_SESSION_CHANGED");
+                connection.setRequestProperty("Referer", "https://www.bilibili.com/"); if (cookies != null && !cookies.isEmpty()) connection.setRequestProperty("Cookie", cookies);
+            }
+            if (connection.getResponseCode() != 200 || connection.getContentLengthLong() > 2 * 1024 * 1024) throw new Exception("LYRICS_HTTP_FAILED");
+            try (java.io.InputStream input = connection.getInputStream(); java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream()) {
+                byte[] block = new byte[8192]; int count;
+                while ((count = input.read(block)) != -1) { if (token != lyricsRequest || destroyed || bytes.size()+count > 2*1024*1024 || SystemClock.elapsedRealtime() > deadline) throw new Exception("LYRICS_LIMIT"); bytes.write(block,0,count); connection.setReadTimeout((int) Math.max(1,Math.min(5000,deadline-SystemClock.elapsedRealtime()))); }
+                return java.nio.charset.StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString();
+            }
+        } finally { connection.disconnect(); if (lyricConnection == connection) lyricConnection = null; }
+    }
+    void skip(int direction, boolean automatic, Completion completion) {
+        try {
+            JSObject next = PlaybackStore.next(this, song == null ? null : song.optString("bvid"), direction, automatic);
+            if (next == null) { if (completion != null) completion.resolve(status()); return; }
+            play(next, completion);
+        } catch (Exception failure) { if (completion != null) completion.reject("读取播放队列失败，原记录已保留。", "QUEUE_READ_FAILED"); }
     }
 
     void resume(Completion completion) {
@@ -483,6 +594,9 @@ public final class PlaybackService extends Service {
                 rejectPending("视频已播放结束。", "PLAYBACK_ENDED");
                 publish(true);
                 for (WeakReference<Listener> ref : LISTENERS) { Listener listener = ref.get(); if (listener != null) listener.onEnded(song); }
+                // Native queue owns progression even if the main Activity is gone.
+                final long endedGeneration = generation;
+                main.post(() -> { if (!destroyed && generation == endedGeneration && "ended".equals(state)) skip(1, true, null); });
             }
             return;
         }
@@ -511,6 +625,12 @@ public final class PlaybackService extends Service {
         }
         if (!snapshot.optBoolean("paused") && snapshot.optBoolean("playing")) {
             state = "playing"; awaitingStart = false; stalledSince = 0; acquireWakeLock();
+            if (historyGeneration != generation) {
+                historyGeneration = generation; final JSObject heard = song; final long heardGeneration = generation;
+                extrasIo.execute(() -> { if (!PlaybackStore.history(this, heard)) main.post(() -> {
+                    if (!destroyed && generation == heardGeneration) { error = "播放已开始，但历史记录保存失败，请检查存储空间或从备份恢复。"; publish(true); }
+                }); });
+            }
             Completion pending = playCompletion; playCompletion = null;
             if (pending != null) pending.resolve(status());
         } else {
@@ -534,6 +654,7 @@ public final class PlaybackService extends Service {
     private void fail(String message, String code, long expectedGeneration) {
         if (destroyed || expectedGeneration != generation) return;
         desiredPlayback = false; awaitingStart = false; state = "error"; error = message; errorCode = code;
+        if ("BILIBILI_SESSION_CHANGED".equals(code)) { lyricCache.clear(); lyricsRequest++; if (lyricConnection != null) lyricConnection.disconnect(); }
         positionRevision++;
         releaseResources(); rejectPending(message, code);
         if (source != null) source.evaluateJavascript("(function(){document.querySelectorAll('video,audio').forEach(function(v){v.muted=true;v.pause();});})()", null);
@@ -602,13 +723,16 @@ public final class PlaybackService extends Service {
         builder.setSmallIcon(R.drawable.ic_stat_yuyin).setContentTitle(song == null ? "open音乐音乐播放器" : song.optString("title", "open音乐"))
                 .setContentText(error != null ? "打开播放器查看问题" : (song == null ? "准备播放" : song.optString("artist", "Bilibili")))
                 .setContentIntent(content).setOnlyAlertOnce(true).setOngoing(playing).setVisibility(Notification.VISIBILITY_PUBLIC)
+                .addAction(new Notification.Action.Builder(android.R.drawable.ic_media_previous, "上一首", action(ACTION_PREVIOUS, 3)).build())
                 .addAction(new Notification.Action.Builder(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                         playing ? "暂停" : "播放", action(playing ? ACTION_PAUSE : ACTION_RESUME, 1)).build())
+                .addAction(new Notification.Action.Builder(android.R.drawable.ic_media_next, "下一首", action(ACTION_NEXT, 4)).build())
                 .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "停止", action(ACTION_STOP, 2)).build())
-                .setStyle(new Notification.MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1));
+                .setStyle(new Notification.MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2));
         return builder.build();
     }
     private void publish(boolean force) {
+        if (floatingLyrics != null) floatingLyrics.update(status());
         JSObject value = status();
         String serialized = value.toString();
         if (force || !serialized.equals(previousPublished)) {
@@ -617,7 +741,7 @@ public final class PlaybackService extends Service {
         }
         int nativeState = "playing".equals(state) ? PlaybackState.STATE_PLAYING : "paused".equals(state) ? PlaybackState.STATE_PAUSED :
                 "loading".equals(state) ? PlaybackState.STATE_BUFFERING : "error".equals(state) ? PlaybackState.STATE_ERROR : PlaybackState.STATE_STOPPED;
-        PlaybackState.Builder playback = new PlaybackState.Builder().setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SEEK_TO)
+        PlaybackState.Builder playback = new PlaybackState.Builder().setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SEEK_TO | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS)
                 .setState(nativeState, (long) (currentTime * 1000), nativeState == PlaybackState.STATE_PLAYING ? 1f : 0f);
         if (error != null) playback.setErrorMessage(error);
         mediaSession.setPlaybackState(playback.build());
@@ -640,6 +764,10 @@ public final class PlaybackService extends Service {
     }
     @Override public void onDestroy() {
         destroyed = true; generation++; positionRevision++;
+        if (floatingLyrics != null) { floatingLyrics.destroy(); floatingLyrics = null; }
+        PlaybackStore.get(this).unregisterOnSharedPreferenceChangeListener(extrasListener);
+        lyricsRequest++; if (lyricConnection != null) lyricConnection.disconnect(); lyricsIo.shutdownNow();
+        extrasIo.shutdown();
         main.removeCallbacksAndMessages(null);
         rejectPending("播放服务已关闭。", "PLAYER_DISPOSED");
         releaseResources();

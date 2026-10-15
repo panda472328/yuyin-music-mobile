@@ -111,7 +111,7 @@ test('favorites, playlists, queue, history and manual-play preferences survive a
   assert.equal(reopened.playlists.at(-1)?.songs[0].bvid, song.bvid)
   assert.equal(reopened.history[0].playedAt, 100)
   assert.equal(reopened.queue[0].bvid, song.bvid)
-  assert.deepEqual(reopened.settings, { volume: 0.35, playMode: 'shuffle', autoPlayFirst: false })
+  assert.deepEqual(reopened.settings, { volume: 0.35, volumeBeforeMute: 0.35, playMode: 'shuffle', autoPlayFirst: false })
   const old = h.stored.get('library')
   h.failWrites()
   await assert.rejects(h.api.saveLibrary({ ...reopened, favorites: [] }), /保存失败/)

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Search, Library, Music2, Settings2, Play, Pause, Heart, Plus, ChevronRight, ChevronLeft,
   SkipBack, SkipForward, ListMusic, MoreHorizontal, X, Check, Repeat1, Shuffle, Repeat,
-  Volume2, LogIn, RefreshCw, FolderHeart, Trash2, Pencil, Clock3, Radio, ExternalLink,
+  Volume2, VolumeX, Download, Upload, Timer, LogIn, RefreshCw, FolderHeart, Trash2, Pencil, Clock3, Radio, ExternalLink,
   MessageCircle, MonitorPlay, AudioLines, ArrowRight, SlidersHorizontal, LoaderCircle, Info } from 'lucide-react'
 import type { BilibiliAccountStatus, BilibiliFavoriteFolder, PlaybackStatus, SearchResult, Song } from './types'
 import type { LyricsLookupResult, LyricsProvider } from './lyric-types'
 import { addToPlaylist, createPlaylist, deletePlaylist, getNextIndex, importBilibiliPlaylist,
-  recordHistory, removeFromPlaylist, renamePlaylist, toggleFavorite, type LibraryState } from './domain/library'
+  recordHistory, removeFromQueue, mergeLibraryBackup, removeFromPlaylist, renamePlaylist, toggleFavorite, type LibraryState } from './domain/library'
+import { createBackup, parseBackup, type MobileBackup } from './domain/backup'
+import FloatingLyricsSettings from './components/FloatingLyricsSettings'
 import { activeLyricIndex, parseLrc } from './domain/lyrics'
+import { defaultPreferences } from './domain/preferences'
 import { AccountGateController } from './domain/account-gate'
 import { mobile, isAndroid, getLyricOffset } from './native/api'
 import SearchBox from './SearchBox'
@@ -22,7 +25,7 @@ type Tab = 'search' | 'library' | 'player' | 'settings' | 'comments'
 type LibraryView = 'overview' | 'favorites' | 'history' | string
 type Dialog = { type: 'create' } | { type: 'rename'; id: string; name: string } |
   { type: 'delete'; id: string; name: string } | { type: 'add'; song: Song } |
-  { type: 'song'; song: Song; playlistId?: string } | { type: 'folders' }
+  { type: 'song'; song: Song; playlistId?: string; queue?: boolean } | { type: 'folders' } | { type: 'clearQueue' } | { type: 'backup'; backup: MobileBackup }
 const idle: PlaybackStatus = { state: 'idle', song: null, currentTime: 0, duration: 0, volume: 0.7, error: null }
 const loggedOut: BilibiliAccountStatus = { loggedIn: false, account: null }
 const modeLabel = { sequence: '列表循环', repeat: '单曲循环', shuffle: '随机播放' }
@@ -66,6 +69,7 @@ export default function App() {
   const libraryRef = useRef<LibraryState | null>(null)
   const [preferences, setPreferences] = useState<MobilePreferences | null>(null)
   const preferencesRef = useRef<MobilePreferences | null>(null)
+  const storesReady = useRef(false)
   const libraryWrites = useRef<Promise<unknown>>(Promise.resolve())
   const preferenceWrites = useRef<Promise<unknown>>(Promise.resolve())
   const [booting, setBooting] = useState(true)
@@ -96,6 +100,7 @@ export default function App() {
   const [searching, setSearching] = useState(false)
   const searchSequence = useRef(0)
   const [lyrics, setLyrics] = useState<LyricsLookupResult | null>(null)
+  const [lyricsIdentity, setLyricsIdentity] = useState('')
   const [lyricsLoading, setLyricsLoading] = useState(false)
   const [lyricsError, setLyricsError] = useState<string | null>(null)
   const [lyricsRetry, setLyricsRetry] = useState(0)
@@ -113,6 +118,9 @@ export default function App() {
   const [folderError, setFolderError] = useState<string | null>(null)
   const [volumeDraft, setVolumeDraft] = useState(70)
   const [seekDraft, setSeekDraft] = useState<number | null>(null)
+  const [sleepUntil, setSleepUntil] = useState<number | null>(null)
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [restoreSettings, setRestoreSettings] = useState(false)
   const seekSequence = useRef(0)
   const nextRef = useRef<() => void>(() => {})
   const current = status.song
@@ -132,12 +140,12 @@ export default function App() {
 
   const mutateLibrary = useCallback((mutate: (state: LibraryState) => LibraryState): Promise<LibraryState> => {
     const operation = libraryWrites.current.catch(() => {}).then(async () => {
-      if (!libraryRef.current) throw new Error('音乐库尚未读取，暂时无法保存，请先重试读取。')
+      if (!storesReady.current || !libraryRef.current) throw new Error('音乐库尚未完整读取，暂时无法保存，请重试读取或从备份恢复。')
       const next = mutate(libraryRef.current)
-      await mobile.saveLibrary(next)
-      libraryRef.current = next
-      setLibrary(next)
-      return next
+      const saved = await mobile.saveLibrary(next)
+      libraryRef.current = saved
+      setLibrary(saved)
+      return saved
     })
     libraryWrites.current = operation
     return operation
@@ -145,7 +153,7 @@ export default function App() {
 
   const mutatePreferences = useCallback((mutate: (state: MobilePreferences) => MobilePreferences): Promise<MobilePreferences> => {
     const operation = preferenceWrites.current.catch(() => {}).then(async () => {
-      if (!preferencesRef.current) throw new Error('设置尚未读取，暂时无法保存，请先重试读取。')
+      if (!storesReady.current || !preferencesRef.current) throw new Error('设置尚未完整读取，暂时无法保存，请重试读取或从备份恢复。')
       const next = mutate(preferencesRef.current)
       await mobile.savePreferences(next)
       preferencesRef.current = next
@@ -159,6 +167,7 @@ export default function App() {
   const checkAccount = useCallback(() => accountController.current?.refresh() ?? Promise.resolve(), [])
 
   const loadStores = useCallback(async () => {
+    storesReady.current = false
     setBooting(true)
     setLoadError(null)
     const loaded = await Promise.allSettled([mobile.loadLibrary(), mobile.loadPreferences()])
@@ -176,6 +185,7 @@ export default function App() {
       setSearchMode(searchModeRef.current)
     } else failures.push(message(loaded[1].reason))
     if (failures.length) setLoadError(failures.join(' '))
+    storesReady.current = failures.length === 0
     setBooting(false)
   }, [])
 
@@ -183,12 +193,19 @@ export default function App() {
     if (requestedSong.current && next.song?.bvid !== requestedSong.current) return
     statusRef.current = next
     setStatus(next)
-    if (next.state === 'playing' && next.song && lastRecorded.current !== next.song.bvid && libraryRef.current) {
+    if (next.error && next.state !== 'error') setError(next.error)
+    if (!isAndroid && next.state === 'playing' && next.song && lastRecorded.current !== next.song.bvid && libraryRef.current) {
       lastRecorded.current = next.song.bvid
       void mutateLibrary(state => recordHistory(state, next.song!)).catch(failure => {
         lastRecorded.current = null
         setError(`播放已开始，但历史记录保存失败：${message(failure)}`)
       })
+    }
+    if (isAndroid && next.state === 'playing' && next.song && lastRecorded.current !== next.song.bvid) {
+      lastRecorded.current = next.song.bvid
+      const operation = libraryWrites.current.catch(() => {}).then(async () => { const value = await mobile.loadLibrary(); libraryRef.current = value; setLibrary(value) })
+      libraryWrites.current = operation
+      void operation.catch(failure => setError(message(failure)))
     }
   }, [mutateLibrary])
 
@@ -206,7 +223,16 @@ export default function App() {
     const handles = [
       mobile.addStatusListener(next => { if (!stopped) receiveStatus(next) }),
       mobile.addEndedListener(song => {
-        if (!stopped && song.bvid === statusRef.current.song?.bvid && !requestedSong.current) nextRef.current()
+        if (!isAndroid && !stopped && song.bvid === statusRef.current.song?.bvid && !requestedSong.current) nextRef.current()
+      }),
+      mobile.addStoreListener(key => {
+        if (stopped) return
+        if (key === 'sleep_until') void mobile.getSleepTimer().then(value => { if (!stopped) setSleepUntil(value.until) }).catch(failure => setError(message(failure)))
+        if (key === 'background_history') {
+          const operation = libraryWrites.current.catch(() => {}).then(async () => { const saved = await mobile.loadLibrary(); if (!stopped) { libraryRef.current = saved; setLibrary(saved) } })
+          libraryWrites.current = operation
+          void operation.catch(failure => setError(message(failure)))
+        }
       }),
       mobile.addSessionListener(() => {
         if (stopped) return
@@ -223,6 +249,7 @@ export default function App() {
     const refresh = () => {
       if (document.visibilityState !== 'visible') return
       void mobile.getStatus().then(receiveStatus).catch(failure => setError(message(failure)))
+      void mobile.getSleepTimer().then(value => setSleepUntil(value.until)).catch(failure => setError(message(failure)))
       if (isAndroid) void checkAccount()
     }
     document.addEventListener('visibilitychange', refresh)
@@ -245,12 +272,13 @@ export default function App() {
     setCalibrating(false)
     setSeekDraft(null)
     setLyrics(null)
+    setLyricsIdentity('')
     setLyricsError(null)
     if (!current) { setLyricsLoading(false); return }
     let cancelled = false
     setLyricsLoading(true)
     void mobile.getLyrics(current, provider, lyricsRetry > 0).then(value => {
-      if (!cancelled) setLyrics(value)
+      if (!cancelled) { setLyrics(value); setLyricsIdentity(`${provider}:${current.bvid}`) }
     }).catch(failure => { if (!cancelled) setLyricsError(message(failure)) }).finally(() => { if (!cancelled) setLyricsLoading(false) })
     return () => { cancelled = true }
   }, [current?.bvid, provider, lyricsRetry])
@@ -299,12 +327,13 @@ export default function App() {
   }, [mutateLibrary, receiveStatus])
 
   const nextSong = useCallback((direction = 1) => {
+    if (isAndroid) { void run(async () => receiveStatus(await mobile.skip(direction < 0 ? -1 : 1))); return }
     const saved = libraryRef.current
     if (!saved?.queue.length) return
     const index = saved.queue.findIndex(song => song.bvid === statusRef.current.song?.bvid)
     const next = getNextIndex(saved.queue, index, saved.settings.playMode, direction)
     if (next >= 0) playSong(saved.queue[next], saved.queue)
-  }, [playSong])
+  }, [playSong, receiveStatus, run])
   nextRef.current = () => nextSong()
 
   const togglePlay = () => void run(async () => {
@@ -387,10 +416,56 @@ export default function App() {
   }))
   const saveVolume = () => void run(async () => {
     const volume = volumeDraft / 100
+    await mutateLibrary(state => ({ ...state, settings: { ...state.settings, volume, ...(volume > 0 ? { volumeBeforeMute: volume } : {}) } }))
     await mobile.setVolume(volume)
-    await mutateLibrary(state => ({ ...state, settings: { ...state.settings, volume } }))
     receiveStatus(await mobile.getStatus())
   })
+  const mute = () => void run(async () => {
+    const saved = libraryRef.current
+    if (!saved) return
+    const volume = saved.settings.volume > 0 ? 0 : saved.settings.volumeBeforeMute ?? .7
+    await mutateLibrary(state => ({ ...state, settings: { ...state.settings, volume, volumeBeforeMute: state.settings.volume > 0 ? state.settings.volume : volume } }))
+    setVolumeDraft(Math.round(volume * 100)); await mobile.setVolume(volume); receiveStatus(await mobile.getStatus())
+  })
+  const setSleep = (minutes: number) => void run(async () => {
+    const value = await mobile.setSleepTimer(minutes ? Date.now() + minutes * 60000 : null)
+    setSleepUntil(value.until); setNotice(value.until ? `${minutes} 分钟后暂停播放` : '已取消睡眠定时')
+  })
+  useEffect(() => { if (isAndroid) void mobile.getSleepTimer().then(value => setSleepUntil(value.until)).catch(failure => setError(message(failure))) }, [])
+  useEffect(() => {
+    if (!isAndroid || !current || lyricsLoading || lyricsIdentity !== `${provider}:${current.bvid}`) return
+    void mobile.syncFloatingLyrics(current.bvid, provider, syncedLines, offset, lyrics?.match?.plainLyrics ?? '').catch(failure => setError(message(failure)))
+  }, [current?.bvid, provider, lyricsIdentity, syncedLines, offset, lyricsLoading, lyrics?.match?.plainLyrics])
+  const backup = (importing: boolean) => {
+    setBackupBusy(true)
+    void run(async () => {
+      await Promise.all([libraryWrites.current, preferenceWrites.current])
+      if (importing) {
+        const { data } = await mobile.importBackup()
+        if (data !== null) { setRestoreSettings(!libraryRef.current || !preferencesRef.current); setDialog({ type: 'backup', backup: parseBackup(data) }) }
+      } else if (libraryRef.current && preferencesRef.current) {
+        const result = await mobile.exportBackup(createBackup(libraryRef.current, preferencesRef.current, await mobile.getFloatingLyrics()))
+        if (result.saved) setNotice('备份已保存到所选位置')
+      }
+    }).finally(() => setBackupBusy(false))
+  }
+  const restore = () => {
+    if (dialog?.type !== 'backup') return
+    setDialogBusy(true)
+    const imported = dialog.backup
+    const operation = libraryWrites.current.catch(() => {}).then(async () => {
+      await preferenceWrites.current.catch(() => {})
+      const prefs = restoreSettings ? imported.preferences ?? (preferencesRef.current ? undefined : defaultPreferences()) : undefined
+      const next = await mobile.restoreBackup(libraryRef.current ? mergeLibraryBackup(libraryRef.current, imported.library, restoreSettings) : imported.library, prefs, restoreSettings ? imported.floatingLyrics : undefined)
+      libraryRef.current = next; setLibrary(next); setVolumeDraft(Math.round(next.settings.volume * 100))
+      if (prefs) { preferencesRef.current = prefs; setPreferences(prefs); searchModeRef.current = prefs.searchMode ?? 'song'; setSearchMode(searchModeRef.current) }
+      if (preferencesRef.current) { storesReady.current = true; setLoadError(null) }
+      await mobile.setVolume(next.settings.volume)
+      setDialog(null); setNotice('已合并备份，现有收藏和歌单已保留')
+    })
+    libraryWrites.current = operation
+    void run(() => operation).finally(() => setDialogBusy(false))
+  }
   const commitSeek = (seconds: number) => {
     const sequence = ++seekSequence.current
     const bvid = statusRef.current.song?.bvid
@@ -452,7 +527,19 @@ export default function App() {
     favorite={favorites.has(song.bvid)} active={current?.bvid === song.bvid} index={tab !== 'search' ? index : undefined}
     onPlay={() => playSong(song, songs)} onFavorite={() => favoriteSong(song)} onMore={() => setDialog({ type: 'song', song, playlistId })} />)
   const login = () => void run(async () => { await mobile.login(); await checkAccount() })
-  const canUse = !booting && library !== null && preferences !== null
+  const canUse = !booting && !loadError && library !== null && preferences !== null
+  useEffect(() => {
+    const keys = (event: KeyboardEvent) => {
+      if (!canUse || dialog || event.repeat) return
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setTab('search'); window.setTimeout(() => searchInputRef.current?.focus(), 0); return }
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, button, [contenteditable="true"]')) return
+      if (event.code === 'Space') { event.preventDefault(); togglePlay() }
+      else if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); nextSong(event.key === 'ArrowLeft' ? -1 : 1) }
+    }
+    document.addEventListener('keydown', keys)
+    return () => document.removeEventListener('keydown', keys)
+  })
 
   return <div className={`app ${current ? 'has-player' : ''} ${!isAndroid ? 'preview-mode' : ''} ${error || loadError ? 'has-alert' : ''}`}>
     <header className="topbar">
@@ -471,7 +558,7 @@ export default function App() {
     </header>
 
     {!isAndroid && <div className="preview-banner"><Info size={16} /><span>手机版界面预览 · 登录和音频播放请在 Android 安装版中使用</span></div>}
-    {loadError && <div className="alert persistent" role="alert"><span>{loadError}</span><button onClick={() => void loadStores()}>重试读取</button></div>}
+    {loadError && <div className="alert persistent" role="alert"><span>{loadError}</span><button onClick={() => void loadStores()}>重试读取</button><button disabled={backupBusy} onClick={() => backup(true)}>从备份恢复</button></div>}
     {error && <div className="alert" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError(null)} aria-label="关闭错误提示"><X size={18} /></button></div>}
     {notice && <div className="toast" role="status"><Check size={17} />{notice}</div>}
     {updates.showBanner && tab !== 'settings' && <UpdateCard update={updates} compact />}
@@ -535,7 +622,7 @@ export default function App() {
             </div>
             {lyrics?.subtitle && <p className="lyrics-credit">Bilibili · {lyrics.subtitle.label}{lyrics.subtitle.isAI ? ' · AI 识别字幕' : ''}</p>}
             {provider === 'lrclib' && lyrics?.match && <p className="lyrics-credit">LRCLIB · {lyrics.match.artistName} · {lyrics.match.trackName}</p>}
-          </> : <div className="queue-list song-list">{rows(library?.queue ?? [])}</div>}
+          </> : <div className="queue-list song-list"><div className="queue-heading"><span>{library?.queue.length ?? 0} 首歌曲</span><button className="text-button" disabled={!library?.queue.length} onClick={() => setDialog({ type: 'clearQueue' })}><Trash2 size={16} />清空队列</button></div>{(library?.queue ?? []).map((song, index) => <SongRow key={song.bvid} song={song} index={index} favorite={favorites.has(song.bvid)} active={current.bvid === song.bvid} onPlay={() => playSong(song, library?.queue ?? [])} onFavorite={() => favoriteSong(song)} onMore={() => setDialog({ type: 'song', song, queue: true })} />)}{!library?.queue.length && <p className="update-caption">队列已空，当前歌曲继续播放。可从歌曲菜单加入新歌曲。</p>}</div>}
           <div className="player-controls"><div className="seek-track"><input type="range" min={0} max={Math.max(1, status.duration || current.duration)} step={0.1} value={Math.min(seekDraft ?? status.currentTime, Math.max(1, status.duration || current.duration))} aria-label="播放进度" onChange={event => setSeekDraft(Number(event.target.value))} onPointerUp={event => commitSeek(Number(event.currentTarget.value))} onKeyUp={event => { if (event.key.startsWith('Arrow') || ['Home', 'End'].includes(event.key)) commitSeek(Number(event.currentTarget.value)) }} style={{ '--progress': `${status.currentTime / Math.max(1, status.duration || current.duration) * 100}%` } as React.CSSProperties} /><span>{time(status.currentTime)}</span><span>{time(status.duration || current.duration)}</span></div><div className="transport"><button className="icon-button" aria-label={modeLabel[library?.settings.playMode ?? 'sequence']} onClick={cycleMode}>{library?.settings.playMode === 'repeat' ? <Repeat1 size={22} /> : library?.settings.playMode === 'shuffle' ? <Shuffle size={22} /> : <Repeat size={22} />}</button><button className="icon-button skip-button" aria-label="上一首" disabled={!library?.queue.length || busy} onClick={() => nextSong(-1)}><SkipBack size={27} fill="currentColor" /></button><button className="big-play" aria-label={playing ? '暂停' : '播放'} disabled={busy} onClick={togglePlay}>{busy ? <LoaderCircle className="spin" size={29} /> : playing ? <Pause size={29} fill="currentColor" /> : <Play size={29} fill="currentColor" />}</button><button className="icon-button skip-button" aria-label="下一首" disabled={!library?.queue.length || busy} onClick={() => nextSong()}><SkipForward size={27} fill="currentColor" /></button><button className="icon-button" aria-label="加入歌单" onClick={() => setDialog({ type: 'add', song: current })}><ListMusic size={22} /></button></div><p className="playback-caption">{status.state === 'error' ? status.error || '播放失败，请重试' : busy ? '正在准备播放…' : playing ? '正在播放 · Bilibili' : status.state === 'ended' ? '播放结束' : '已暂停'}</p></div>
         </>}
       </>}
@@ -546,7 +633,10 @@ export default function App() {
         <div className="page-intro"><span className="eyebrow">MAKE IT YOURS</span><h1>听歌设置</h1><p>习惯的方式，舒服的声音。</p></div>
         <UpdateCard update={updates} />
         <div className="settings-card account-card"><span className="settings-account-avatar"><Avatar url={account.loggedIn ? account.account.avatar : undefined} /></span><span><strong>{account.loggedIn ? account.account.username : 'Bilibili 账号'}</strong><small>{account.loggedIn ? `UID ${account.account.mid}` : '登录后使用搜索和播放'}</small></span><button className="text-button" onClick={login}>{account.loggedIn ? '管理' : '登录'}<ChevronRight size={16} /></button></div>
-        <div className="settings-card"><div className="settings-label"><Volume2 size={19} /><span><strong>播放音量</strong><small>每次打开，保留你习惯的音量</small></span><b>{volumeDraft}%</b></div><input type="range" min={0} max={100} value={volumeDraft} aria-label="播放音量" onChange={event => setVolumeDraft(Number(event.target.value))} onPointerUp={saveVolume} onKeyUp={event => { if (event.key.startsWith('Arrow') || ['Home', 'End'].includes(event.key)) saveVolume() }} /></div>
+        <div className="settings-card"><div className="settings-label"><Volume2 size={19} /><span><strong>播放音量</strong><small>静音后可恢复之前的音量</small></span><button className="icon-button" disabled={!canUse} aria-label={library?.settings.volume === 0 ? '取消静音' : '静音'} onClick={mute}>{library?.settings.volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}</button><b>{volumeDraft}%</b></div><input type="range" min={0} max={100} value={volumeDraft} aria-label="播放音量" onChange={event => setVolumeDraft(Number(event.target.value))} onPointerUp={saveVolume} onKeyUp={event => { if (event.key.startsWith('Arrow') || ['Home', 'End'].includes(event.key)) saveVolume() }} /></div>
+        <div className="settings-card"><div className="settings-label"><Timer size={19} /><span><strong>睡眠定时</strong><small>{sleepUntil && sleepUntil > Date.now() ? `将在 ${new Date(sleepUntil).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 暂停播放` : '到时暂停，熄屏后继续计时'}</small></span></div><label className="setting-select-label">暂停时间<select aria-label="睡眠定时" disabled={!isAndroid || !canUse} value={sleepUntil && sleepUntil > Date.now() ? 'active' : '0'} onChange={event => setSleep(Number(event.target.value))}><option value="0">关闭</option>{sleepUntil && sleepUntil > Date.now() && <option value="active">已设定</option>}<option value="15">15 分钟后</option><option value="30">30 分钟后</option><option value="60">60 分钟后</option><option value="90">90 分钟后</option></select></label></div>
+        <FloatingLyricsSettings onError={setError} />
+        <div className="settings-card"><div className="settings-label"><Download size={19} /><span><strong>音乐库备份</strong><small>JSON 备份包含收藏、歌单、历史、队列和设置</small></span></div><div className="setting-inline-actions"><button className="text-button" disabled={!isAndroid || !canUse || backupBusy} onClick={() => backup(false)}><Download size={17} />导出备份</button><button className="text-button" disabled={!isAndroid || !canUse || backupBusy} onClick={() => backup(true)}><Upload size={17} />导入并合并</button></div><p className="update-caption">支持 PC 歌库 JSON；导入前预览，合并去重。备份不包含 Bilibili 登录凭据。</p></div>
         <div className="settings-card"><div className="settings-label"><Music2 size={19} /><span><strong>默认歌词来源</strong><small>切换后，也会记住你的选择</small></span></div><div className="setting-options"><button className={provider === 'bilibili' ? 'selected' : ''} onClick={() => setSource('bilibili')}><span>Bilibili 字幕<small>与视频对应，优先使用</small></span>{provider === 'bilibili' && <Check size={19} />}</button><button className={provider === 'lrclib' ? 'selected' : ''} onClick={() => setSource('lrclib')}><span>搜索歌词<small>来自 LRCLIB，可逐首校准</small></span>{provider === 'lrclib' && <Check size={19} />}</button></div></div>
         <div className="settings-card"><div className="settings-label"><Repeat size={19} /><span><strong>播放模式</strong><small>{modeLabel[library?.settings.playMode ?? 'sequence']}</small></span><button className="text-button" onClick={cycleMode} disabled={!canUse}>切换<ChevronRight size={16} /></button></div></div>
         <div className="settings-card saved-note"><Check size={20} /><span><strong>你的音乐，会被记住</strong><p>收藏、歌单、播放历史、队列、音量和歌词校准都保存在这台手机上。手机版与 PC 版各自独立。</p></span></div>
@@ -559,8 +649,10 @@ export default function App() {
     {!(isAndroid && !account.loggedIn && !guest) && <nav className="bottom-nav" aria-label="主导航">{([{ id: 'search', label: '发现', Icon: Search }, { id: 'library', label: '音乐库', Icon: Library }, { id: 'player', label: '正在听', Icon: AudioLines }, { id: 'settings', label: '设置', Icon: Settings2 }] as const).map(({ id, label, Icon }) => <button key={id} className={tab === id || tab === 'comments' && id === 'player' ? 'active' : ''} aria-current={tab === id || tab === 'comments' && id === 'player' ? 'page' : undefined} onClick={() => { setTab(id); setAccountMenu(false) }}><Icon size={22} /><span>{label}</span></button>)}</nav>}
 
     {dialog && <div className="sheet-backdrop" onClick={() => { if (!dialogBusy) setDialog(null) }}><section className="sheet" role="dialog" aria-modal="true" aria-label={dialog.type === 'create' ? '新建歌单' : dialog.type === 'rename' ? '重命名歌单' : dialog.type === 'delete' ? '删除歌单' : dialog.type === 'folders' ? 'Bilibili 收藏夹' : '歌曲操作'} onClick={event => event.stopPropagation()}><span className="sheet-handle" /><button className="icon-button sheet-close" aria-label="关闭" disabled={dialogBusy} onClick={() => setDialog(null)}><X size={21} /></button>
+      {dialog.type === 'clearQueue' && <><h2>清空播放队列？</h2><p>当前歌曲继续播放，收藏、歌单和历史保留。</p><button className="primary-button wide danger" disabled={dialogBusy} onClick={() => { setDialogBusy(true); void run(async () => { await mutateLibrary(state => ({ ...state, queue: [] })); setDialog(null); setNotice('播放队列已清空') }).finally(() => setDialogBusy(false)) }}><Trash2 size={18} />确认清空</button></>}
+      {dialog.type === 'backup' && <><h2>合并音乐库备份</h2><p>{dialog.backup.library.favorites.length} 首收藏 · {dialog.backup.library.playlists.length} 份歌单 · {dialog.backup.library.history.length} 条历史<br />{library ? '相同歌曲自动去重，现有歌单保留。' : '当前歌库不可读，将从备份恢复，并保留损坏的原记录。'}</p><label className="backup-choice"><input type="checkbox" checked={restoreSettings} disabled={dialogBusy || !preferences} onChange={event => setRestoreSettings(event.target.checked)} />同时恢复备份设置{!dialog.backup.preferences && '（仅音量与播放模式）'}</label><button className="primary-button wide" disabled={dialogBusy} onClick={restore}>{dialogBusy ? <LoaderCircle className="spin" size={18} /> : <Check size={18} />}确认合并</button></>}
       {(dialog.type === 'create' || dialog.type === 'rename' || dialog.type === 'delete') && <form onSubmit={event => void submitDialog(event)}><h2>{dialog.type === 'create' ? '新建歌单' : dialog.type === 'rename' ? '重命名歌单' : '删除这份歌单？'}</h2><p>{dialog.type === 'delete' ? `「${dialog.name}」将从本地歌单中移除。歌曲收藏和历史仍会保留。` : '给喜欢的声音，起一个好听的名字。'}</p>{dialog.type !== 'delete' && <input className="name-input" aria-label="歌单名称" placeholder="输入歌单名称" value={dialogName} onChange={event => setDialogName(event.target.value)} maxLength={80} required autoComplete="off" />}<button className={`primary-button wide ${dialog.type === 'delete' ? 'danger' : ''}`} disabled={dialogBusy || (dialog.type !== 'delete' && !dialogName.trim())}>{dialogBusy ? <LoaderCircle className="spin" size={18} /> : dialog.type === 'delete' ? <Trash2 size={18} /> : <Check size={18} />}{dialog.type === 'delete' ? '删除歌单' : '保存歌单'}</button></form>}
-      {dialog.type === 'song' && <><div className="sheet-song"><Cover song={dialog.song} /><span><strong>{dialog.song.title}</strong><small>{dialog.song.artist}</small></span></div><button className="sheet-action" onClick={() => { favoriteSong(dialog.song); setDialog(null) }}><Heart size={20} fill={favorites.has(dialog.song.bvid) ? 'currentColor' : 'none'} />{favorites.has(dialog.song.bvid) ? '取消收藏' : '收藏这首歌'}</button><button className="sheet-action" onClick={() => setDialog({ type: 'add', song: dialog.song })}><Plus size={20} />加入歌单<ChevronRight size={17} /></button><button className="sheet-action" onClick={() => void run(async () => { await mutateLibrary(state => ({ ...state, queue: state.queue.some(song => song.bvid === dialog.song.bvid) ? state.queue : [...state.queue, dialog.song] })); setDialog(null); setNotice('已加入播放队列') })}><ListMusic size={20} />加入播放队列</button>{dialog.playlistId && <button className="sheet-action destructive" onClick={() => void run(async () => { await mutateLibrary(state => removeFromPlaylist(state, dialog.playlistId!, dialog.song.bvid)); setDialog(null); setNotice('已从歌单移除') })}><Trash2 size={20} />从此歌单移除</button>}<button className="sheet-action" onClick={() => void run(() => mobile.openSource())}><MonitorPlay size={20} />打开当前视频 MV</button></>}
+      {dialog.type === 'song' && <><div className="sheet-song"><Cover song={dialog.song} /><span><strong>{dialog.song.title}</strong><small>{dialog.song.artist}</small></span></div><button className="sheet-action" onClick={() => { favoriteSong(dialog.song); setDialog(null) }}><Heart size={20} fill={favorites.has(dialog.song.bvid) ? 'currentColor' : 'none'} />{favorites.has(dialog.song.bvid) ? '取消收藏' : '收藏这首歌'}</button><button className="sheet-action" onClick={() => setDialog({ type: 'add', song: dialog.song })}><Plus size={20} />加入歌单<ChevronRight size={17} /></button><button className="sheet-action" onClick={() => void run(async () => { await mutateLibrary(state => ({ ...state, queue: state.queue.some(song => song.bvid === dialog.song.bvid) ? state.queue : [...state.queue, dialog.song] })); setDialog(null); setNotice('已加入播放队列') })}><ListMusic size={20} />加入播放队列</button>{dialog.queue && <button className="sheet-action destructive" onClick={() => void run(async () => { await mutateLibrary(state => removeFromQueue(state, dialog.song.bvid)); setDialog(null); setNotice("已从队列移除，当前播放不受影响") })}><Trash2 size={20} />从队列移除</button>}{dialog.playlistId && <button className="sheet-action destructive" onClick={() => void run(async () => { await mutateLibrary(state => removeFromPlaylist(state, dialog.playlistId!, dialog.song.bvid)); setDialog(null); setNotice('已从歌单移除') })}><Trash2 size={20} />从此歌单移除</button>}<button className="sheet-action" onClick={() => void run(() => mobile.openSource())}><MonitorPlay size={20} />打开当前视频 MV</button></>}
       {dialog.type === 'add' && <><h2>加入歌单</h2><p className="sheet-track-name">{dialog.song.title}</p><div className="sheet-list">{library?.playlists.map(item => {
         const added = item.songs.some(song => song.bvid === dialog.song.bvid)
         return <button className="sheet-action" key={item.id} disabled={added || dialogBusy} onClick={() => { setDialogBusy(true); void run(async () => { await mutateLibrary(state => addToPlaylist(state, item.id, dialog.song)); setDialog(null); setNotice(`已加入「${item.name}」`) }).finally(() => setDialogBusy(false)) }}><ListMusic size={21} /><span>{item.name}<small>{item.songs.length} 首歌曲</small></span>{added ? <Check size={18} /> : <Plus size={18} />}</button>

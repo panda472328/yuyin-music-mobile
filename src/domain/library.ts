@@ -15,7 +15,7 @@ export interface LibraryState {
   playlists: Playlist[]
   history: HistoryEntry[]
   // Keep the legacy auto-play value for older backups; search playback is always explicit.
-  settings: { volume: number; playMode: PlayMode; autoPlayFirst: boolean }
+  settings: { volume: number; playMode: PlayMode; autoPlayFirst: boolean; volumeBeforeMute?: number }
   queue: Song[]
 }
 export type LibraryStorage = Pick<Storage, 'getItem' | 'setItem'>
@@ -150,6 +150,7 @@ function parseLibrary(value: unknown): LibraryState {
     history,
     settings: {
       volume: number(settings?.volume, base.settings.volume, 0, 1),
+      volumeBeforeMute: number(settings?.volumeBeforeMute, number(settings?.volume, .7, .01, 1), .01, 1),
       playMode: settings?.playMode === 'repeat' || settings?.playMode === 'shuffle' ? settings.playMode : 'sequence',
       autoPlayFirst: false,
     },
@@ -255,6 +256,34 @@ export function addToPlaylist(state: LibraryState, id: string, song: Song): Libr
 export function removeFromPlaylist(state: LibraryState, id: string, songId: string): LibraryState {
   return { ...state, playlists: state.playlists.map(playlist => playlist.id === id
     ? { ...playlist, songs: playlist.songs.filter(song => song.id !== songId && song.bvid !== songId) } : playlist) }
+}
+
+export function removeFromQueue(state: LibraryState, bvid: string): LibraryState {
+  return { ...state, queue: state.queue.filter(song => song.bvid !== bvid) }
+}
+
+/** PC library JSON is compatible; reject malformed input rather than treating it as an empty backup. */
+export function parseLibraryBackup(input: unknown): LibraryState {
+  const entry = object(input)
+  if (!entry || entry.version !== 1 || !['favorites', 'playlists', 'history', 'queue'].every(key => Array.isArray(entry[key])) || !object(entry.settings)) throw new Error('这不是有效的音乐库备份。')
+  if ((entry.favorites as unknown[]).length > MAX_SONGS || (entry.queue as unknown[]).length > MAX_SONGS || (entry.playlists as unknown[]).length > MAX_PLAYLISTS || (entry.playlists as unknown[]).some(value => { const item = object(value); return !item || !Array.isArray(item.songs) || item.songs.length > MAX_SONGS })) throw new Error('备份超出歌库容量，未导入任何内容。')
+  const collections = [entry.favorites, entry.queue, ...(entry.playlists as Record<string, unknown>[]).map(item => item.songs)] as unknown[][]
+  if (collections.some(items => items.some(item => !parseSong(item))) || (entry.history as unknown[]).some(item => !parseSong(object(item)?.song))) throw new Error('备份包含无效歌曲，未导入任何内容。')
+  if ((entry.playlists as Record<string, unknown>[]).some(item => typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(item.id) || !cleanText(item.name, 80))) throw new Error('备份包含无效歌单，未导入任何内容。')
+  return parseLibrary(entry)
+}
+
+export function mergeLibraryBackup(current: LibraryState, imported: LibraryState, restoreSettings = false): LibraryState {
+  const mergeSongs = (a: Song[], b: Song[]) => { const seen = new Set(a.map(song => song.bvid)); return [...a, ...b.filter(song => { if (seen.has(song.bvid)) return false; seen.add(song.bvid); return true })] }
+  const playlists = new Map(current.playlists.map(item => [item.id, item]))
+  for (const item of imported.playlists) {
+    const existing = playlists.get(item.id)
+    playlists.set(item.id, existing ? { ...existing, songs: mergeSongs(existing.songs, item.songs) } : item)
+  }
+  const merged = parseLibrary({ ...current, favorites: mergeSongs(current.favorites, imported.favorites), queue: mergeSongs(current.queue, imported.queue), playlists: [...playlists.values()], history: [...current.history, ...imported.history], settings: restoreSettings ? imported.settings : current.settings })
+  // Validate counts before normalization can truncate, so an oversized merge is atomic.
+  if (mergeSongs(current.favorites, imported.favorites).length > MAX_SONGS || mergeSongs(current.queue, imported.queue).length > MAX_SONGS || playlists.size > MAX_PLAYLISTS || [...playlists.values()].some(item => item.songs.length > MAX_SONGS)) throw new Error('合并后超过歌库容量，原记录已保留。')
+  return merged
 }
 
 export function recordHistory(state: LibraryState, song: Song, playedAt = Date.now()): LibraryState {

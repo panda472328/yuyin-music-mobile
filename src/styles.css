@@ -1,3 +1,4 @@
+
 @import url('./theme.css');
 
 /* Shared brand, mobile layout. */
@@ -679,3 +680,17 @@ input[type='range']::-moz-range-thumb { background: var(--green); width: 13px; h
 :root[data-theme="pixel"] .app { background-image: linear-gradient(#35594c0a 1px, transparent 1px), linear-gradient(90deg, #35594c0a 1px, transparent 1px); background-size: 16px 16px; }
 :root[data-theme="pixel"] .settings-card, :root[data-theme="pixel"] .search-box { box-shadow: 3px 3px 0 var(--line); }
 :root[data-theme="pixel"] .mini-player, :root[data-theme="pixel"] .comments-sort, :root[data-theme="pixel"] .comment-thread, :root[data-theme="pixel"] .comments-error, :root[data-theme="pixel"] .comments-source-badge, :root[data-theme="pixel"] .search-suggestions, :root[data-theme="pixel"] .discovery-card, :root[data-theme="pixel"] .playlist-card, :root[data-theme="pixel"] .update-card { border-radius: 0; }
+/* Mobile feature parity controls: touch layouts use existing semantic tokens. */
+.settings-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.settings-fields label, .setting-select-label { display: flex; flex-direction: column; gap: 8px; min-width: 0; color: var(--ink); font-size: 13px; }
+.settings-fields select, .setting-select-label select { width: 100%; min-height: 44px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.settings-fields output { color: var(--muted); }
+.settings-fields input[type='range'] { height: 44px; }
+.setting-inline-actions, .floating-permission, .queue-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.setting-inline-actions { margin-top: 12px; }
+.floating-permission p { flex-basis: 100%; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.setting-select-label { margin-top: 14px; }
+.queue-heading { justify-content: space-between; padding: 8px 0; font-size: 13px; color: var(--muted); }
+.backup-choice { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 12px 0; color: var(--ink); font-size: 13px; }
+.backup-choice input { width: 20px; height: 20px; accent-color: var(--green); }
+:root[data-theme="pixel"] .settings-fields select, :root[data-theme="pixel"] .setting-select-label select { border-radius: 0; }

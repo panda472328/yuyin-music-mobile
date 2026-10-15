@@ -17,6 +17,9 @@
 | MV 入口与原视频窗口 | `App.tsx` 的播放页按钮、原生 `PlaybackService` / `MediaScript.mv` | 同一音源显示 / 返回，不能新增 play 或重载视频 |
 | 歌词与校准 | `.lyric-window`、`.lyric-lines`、`.source-select`、`.timing-*` | 当前句、校准态、空歌词和歌词来源切换 |
 | 播放器与底部导航 | `.player-*`、`.transport`、`.mini-player`、`.bottom-nav` | 进度拖动、底部安全区、歌词滚动、横屏 |
+| 队列、睡眠定时、静音与备份 | `App.tsx`、`.queue-heading`、`.setting-select-label`、`.setting-inline-actions`、`.backup-choice` | 保存确认、清空弹层、预览合并、失败、损坏记录恢复与键盘焦点 |
+| 悬浮歌词设置 | `src/components/FloatingLyricsSettings.tsx`、`.settings-fields`、`.floating-permission` | 授权前后、设置保存失败、外部工具栏更改后刷新、窄屏和四主题 |
+| Android 悬浮文字与工具栏 | `FloatingLyricsWindow.java` 的 `LyricsView` / `IconView`、`params`、`layout` | 原生触摸、拖动、锁定穿透、中央解锁、3 秒隐藏、旋转和权限撤销；不能用网页截图代替 |
 | 操作弹层 | `.sheet-backdrop`、`.sheet*` | 长列表、关闭按钮、危险操作、屏幕键盘 |
 | 更新卡片与新版提示 | `src/components/Updates.tsx`、`.update-card`、`.update-banner`、`.update-notes`、`.update-actions` | 登录前检查、设置检查、下载进度、取消、失败重试与系统安装确认 |
 | 文案、结构或状态类 | `src/App.tsx` | 保留已有事件、保存确认和无障碍标记 |
@@ -84,13 +87,15 @@ Android WebView 中没有浏览器地址栏，页面与播放器高度使用 `vh
 - 底部弹层内部滚动，关闭按钮保持可点；长歌名可以换行，内容不得通过横向溢出扩大页面。
 - 保留 `prefers-reduced-motion`，旋转、平滑滚动和过渡在用户减少动画时降级。
 - 更新卡片复用 `--surface`、`--line`、`--green`、`--muted` 和已有按钮语义。`.update-notes` 保留换行并容纳长说明；`.update-actions` 在窄屏换行，不遮盖底部播放控件。检查、下载期间保留可理解的状态及 disabled，下载可取消，安装由用户明确选择；不要在组件样式中触发检查／下载或改变原生安装与校验逻辑。登录前和设置页的入口分别检查空态、发现新版、进度、失败和已下载状态，详情见 [UPDATES.md](UPDATES.md)。
+- 新设置的两列字段采用 `.settings-fields`，复用语义背景 / 边框 / 正文颜色；选择框、按钮和新增滑杆触摸区至少 44px，像素主题在文件末尾覆盖方角。字号 / 透明度滑杆在拖动时更新草稿，松手或键盘方向键释放时保存，避免写入中禁用控件打断拖动。备份先预览再确认；导出包含移动端设置，导入默认合并歌库，设置恢复单独勾选。存储读取失败时禁用正常保存，保留明确的备份恢复入口。
+- 悬浮歌词使用两个原生透明窗口，不套主页面主题背景。文字为白 / 薄荷绿 / 金色加深色描边；按钮只绘制白色图标与描边，没有圆角底块。未锁定文字窗口可拖动和点击，工具栏 44dp 图标可横向滚动，3 秒后隐藏；锁定文字设置 NOT_TOUCHABLE，工具栏只保留中央解锁图标。Android 12+ 按系统最大遮挡透明度保证穿透触摸。系统字体依设备可用字体回退，不保证每台手机的楷书 / 圆体字形相同。
 
 ## 推荐修改流程
 
 1. 阅读需求与目标组件，检查当前 Git diff，保留已有工作；按上表找到样式入口。
 2. 全局风格改语义变量，局部布局改组件规则；需要新状态时在 React 增加明确类名。不要把保存、登录、歌词或播放业务混入仅样式任务。
 3. 同步调整组件中相应的硬编码装饰色。换主色 / 页面底色时核对 Capacitor 背景、原生启动主题和系统栏。
-4. 运行 `npm run typecheck`、`npm test`、`npm run build`。保留 `npm run dev` 服务，在另一终端执行 `node scripts/verify-ui.mjs` 和 `node scripts/verify-pc-sync-ui.mjs`；脚本通过 `ui-fixture.mjs` 使用虚构账号及独立数据，不操作用户会话。新增脚本覆盖四主题 / 系统明暗、游客评论、搜索切换和显式评论 / MV，证据留在 `.qa/pc-sync-ui/`。
+4. 运行 `npm run typecheck`、`npm test`、`npm run build`。保留 `npm run dev` 服务，在另一终端执行 `node scripts/verify-ui.mjs`、`node scripts/verify-pc-sync-ui.mjs`、`node scripts/verify-full-parity-ui.mjs`；脚本通过 `ui-fixture.mjs` 使用虚构账号及独立数据，不操作用户会话。新增功能脚本覆盖静音、定时、队列清空、浮窗设置、备份合并与损坏歌库恢复；证据分别留在 `.qa/mobile-ui/`、`.qa/pc-sync-ui/` 和 `.qa/full-parity-ui/`。
 5. 检查登录、首页、搜索、歌单、播放器歌词、账号菜单、设置和弹层截图，覆盖 320 / 360 像素窄屏、844×390 横屏以及长标题。验证可点击、可滚动、无横向溢出；歌词与底部控件同时可用。
 6. Android 系统主题或原生布局有改动时构建 APK，在专用设备验证启动页、系统栏和安全区，按 [ANDROID-TESTING.md](ANDROID-TESTING.md) 验证涉及的原生行为。
 7. 更新本文中变更的配色与规则，并在贡献说明列出修改、截图、检查结果和未验证范围。跨平台主题变更分别提交到两个仓库。

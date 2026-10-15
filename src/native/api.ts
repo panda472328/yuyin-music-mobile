@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
-import type { YuyinNativePlugin, MobilePreferences } from './contract'
+import type { YuyinNativePlugin, MobilePreferences, FloatingLyricsSettings } from './contract'
 import type { BilibiliFavoriteFoldersResult, BilibiliFavoriteSongsResult, Song, PlaybackStatus } from '../types'
 import type { LyricsLookupResult, LyricsProvider, LyricsTrack } from '../lyric-types'
 import { BilibiliAccountSession, BilibiliError } from '../domain/account'
@@ -20,6 +20,10 @@ const noopListener = (): PluginListenerHandle => ({ remove: async () => {} })
 const unavailable = (): never => { throw new Error('登录和播放需要在 Android APK 中使用，浏览器只用于预览界面。') }
 
 const preview: YuyinNativePlugin = {
+  skip: async () => unavailable(), getSleepTimer: async () => ({ until: null }), setSleepTimer: async () => unavailable(),
+  getFloatingLyrics: async () => ({ enabled: false, locked: false, font: 'sans', fontSize: 24, color: 'white', opacity: 1, x: .5, y: .2, permission: false }),
+  setFloatingLyrics: async () => unavailable(), requestOverlayPermission: async () => unavailable(), syncFloatingLyrics: async () => {},
+  exportBackup: async () => unavailable(), importBackup: async () => unavailable(), restoreBackup: async () => unavailable(),
   setAppearance: async ({ dark }) => ({ dark }), mutateComment: async () => unavailable(),
   checkUpdate: async () => unavailable(), downloadUpdate: async () => unavailable(), cancelUpdate: async () => unavailable(), installUpdate: async () => unavailable(), getUpdateState: async () => unavailable(),
   request: async () => unavailable(), openLogin: async () => unavailable(), openSource: async () => unavailable(),
@@ -70,12 +74,13 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
     return result.state
   }
 
-  async function writeLibrary(state: LibraryState): Promise<void> {
+  async function writeLibrary(state: LibraryState): Promise<LibraryState> {
     let data = ''
     const result = normalizeLibrary(state, { getItem: () => null, setItem: (_key, value) => { data = value } })
     if (!result.ok) throw new Error(result.error)
     const saved = await native.writeStore({ key: 'library', data })
     if (!saved.saved) throw new Error('音乐库保存失败，原记录已保留，请检查手机存储空间。')
+    return saved.data ? initializeLibrary({ getItem: () => saved.data!, setItem: () => {} }).state : state
   }
 
   async function lrclib(song: Song): Promise<LyricsLookupResult> {
@@ -121,6 +126,17 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
   }
 
   return {
+    skip: (direction: -1 | 1) => native.skip({ direction }),
+    getSleepTimer: () => native.getSleepTimer(), setSleepTimer: (until: number | null) => native.setSleepTimer({ until }),
+    getFloatingLyrics: () => native.getFloatingLyrics(), setFloatingLyrics: (settings: FloatingLyricsSettings) => native.setFloatingLyrics({ settings }),
+    requestOverlayPermission: () => native.requestOverlayPermission(),
+    syncFloatingLyrics: (bvid: string, provider: LyricsProvider, lines: { time: number; text: string }[], offset: number, fallback: string) => native.syncFloatingLyrics({ bvid, provider, lines, offset, fallback }),
+    exportBackup: (data: string) => native.exportBackup({ data }), importBackup: () => native.importBackup(),
+    async restoreBackup(library: LibraryState, preferences?: MobilePreferences, floatingLyrics?: FloatingLyricsSettings) {
+      const result = await native.restoreBackup({ library: JSON.stringify(library), ...(preferences ? { preferences: JSON.stringify(normalizePreferences(preferences)) } : {}), ...(floatingLyrics ? { floatingLyrics } : {}) })
+      if (!result.saved) throw new Error('备份恢复失败，原记录已保留。')
+      return result.data ? initializeLibrary({ getItem: () => result.data!, setItem: () => {} }).state : library
+    },
     checkUpdate: async () => normalizeUpdateState(await native.checkUpdate()),
     downloadUpdate: async () => normalizeUpdateState(await native.downloadUpdate()),
     cancelUpdate: async () => normalizeUpdateState(await native.cancelUpdate()),
@@ -178,6 +194,7 @@ export function createMobileApi(native: YuyinNativePlugin, android = true) {
       if (!(await native.writeStore({ key: 'preferences', data })).saved) throw new Error('设置保存失败，请检查手机存储空间。')
     },
     addStatusListener: (callback: (status: PlaybackStatus) => void) => native.addListener('status', callback),
+    addStoreListener: (callback: (key: string) => void) => native.addListener('storeChanged', event => callback(event.key)),
     addEndedListener: (callback: (song: Song) => void) => native.addListener('ended', event => callback(event.song)),
     addSessionListener: (callback: () => void) => native.addListener('sessionChanged', () => {
       invalidateSession(); callback()
