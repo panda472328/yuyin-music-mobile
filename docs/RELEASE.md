@@ -1,5 +1,20 @@
 # Android 发布文件
 
+## 0.1.5 主题与歌词样式同步
+
+正式版本：[Gitee android-v0.1.5](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.5)、[GitHub android-v0.1.5](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.5)。两端各提供一个相同的 `Yuyin-Mobile-0.1.5.apk`，versionCode 6；保留经典，发布新版 Bilibili / 我的世界主题与四款独立歌词预设。
+
+| 项目 | 值 |
+| --- | --- |
+| 实际构建与不可变标签提交 | `ce7c3abb613ea9a4ada27d1040ff377a867b76db` |
+| APK 字节数 | `5114211` |
+| APK SHA-256 | `eaac052c9fb797889c77bbfc34b9f0a0158768708ffa373b85a65c18c86ae744` |
+| 沿用签名证书 SHA-256 | `068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146` |
+| GitHub Release / 附件 ID | `413583235` / `643242932` |
+| Gitee Release / 附件 ID | `1207438` / `3396897` |
+
+从干净源码签名构建，已在专用 Android 9 实例从正式 0.1.4 覆盖升级，测试歌库和偏好逐字节保持。两端附件完成完整回读与大小 / SHA-256 校验；稳定和国内清单分别保留 GitHub 备用、Gitee 优先地址。详细结果和未验证范围见 [QA-0.1.5.md](QA-0.1.5.md)。后续文档与通道提交不改变标签或 APK。
+
 ## 0.1.4 功能同步与国内更新
 
 正式版本：[GitHub android-v0.1.4](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.4)、[Gitee android-v0.1.4](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.4)。每个平台只提供一个相同的 `Yuyin-Mobile-0.1.4.apk`，versionCode 5。功能包括 PC 0.5.3 适用功能同步、Android 悬浮歌词、原生后台切歌与睡眠定时、备份恢复、重播进度修复及 Gitee 优先的双源更新。

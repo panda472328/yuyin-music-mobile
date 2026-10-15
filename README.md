@@ -1,6 +1,6 @@
 # open音乐手机版
 
-open音乐的独立 Android 音乐播放器，当前已发布版本为 **0.1.4**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。手机版与 [PC 版](https://github.com/panda472328/yuyin-music) 使用两个独立仓库，各自管理源码、依赖、版本和安装包。经典米白与鼠尾草绿主题、唱片元素和歌词高亮继续保留，布局适合触屏；详见 [界面规范](docs/UI-GUIDE.md)。
+open音乐的独立 Android 音乐播放器，当前已发布版本为 **0.1.5**。界面由 React 构建，Capacitor 连接 Android 原生能力；音源来自 Bilibili 官方视频页面。手机版与 [PC 版](https://github.com/panda472328/yuyin-music) 使用两个独立仓库，各自管理源码、依赖、版本和安装包。经典米白与鼠尾草绿主题、唱片元素和歌词高亮继续保留，布局适合触屏；详见 [界面规范](docs/UI-GUIDE.md)。
 
 0.1.4 补齐 PC 0.5.3 适用于 Android 的功能：双模式搜索、音乐 UP 主优先、搜索联想、四套主题、游客入口、原视频评论和 MV、选曲归零与进度保护，以及睡眠定时、歌库备份恢复、队列管理、静音音量恢复、Android 悬浮歌词和后台媒体切歌。功能对照见 [完整同步验证](docs/QA-FULL-PARITY.md)，发布检查见 [0.1.4 验证](docs/QA-0.1.4.md)。
 
@@ -8,11 +8,11 @@ open音乐的独立 Android 音乐播放器，当前已发布版本为 **0.1.4**
 
 **0.1.3** 增加自动检查新版、用户选择下载与 Android 系统安装确认，继续保留 0.1.2 的登录返回与后台播放修复。类型检查、20 项业务测试、13 项隔离界面检查、7 项原生单元测试和 8 项受控设备测试通过；验证范围见 [0.1.3 验证记录](docs/QA-0.1.3.md)。历史结果保留在 [0.1.2](docs/QA-0.1.2.md)、[0.1.1](docs/QA-0.1.1.md) 和 [0.1.0](docs/QA.md)。真实 Bilibili 登录、实播及不同手机的长时间省电表现需要单独验收。
 
-当前主分支另含尚未发包的新 UI：新版 Bilibili／我的世界主题、主题预览及四款独立歌词预设，见 [源码同步验证](docs/QA-UI-SYNC-20261015.md)。正式 0.1.4 APK 不随源码推送自动改变。
+0.1.5 已发布新版 Bilibili／我的世界主题、主题预览及四款独立歌词预设，见 [源码同步验证](docs/QA-UI-SYNC-20261015.md) 和 [0.1.5 发布验证](docs/QA-0.1.5.md)。保留原签名，已验证从 0.1.4 覆盖升级后测试歌库和偏好不变。
 
 ## 下载和安装
 
-从 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.4) 或 [Gitee Releases](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.4) 下载当前 0.1.4 APK。每个平台仅上传一个安装附件：`Yuyin-Mobile-0.1.4.apk`；SHA-256、实际 APK 构建提交和签名证书摘要写在发布说明中。0.1.4 / versionCode 5 沿用此前的官方签名，可直接覆盖升级。历史标签保留，不移动到新业务代码。
+从 [Gitee Releases](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.5) 或 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.5) 下载当前 0.1.5 APK。每个平台仅上传一个安装附件：`Yuyin-Mobile-0.1.5.apk`，5,114,211 字节；SHA-256、实际 APK 构建提交和签名证书摘要写在发布说明中。0.1.5 / versionCode 6 沿用此前的官方签名，可直接覆盖升级。历史标签保留，不移动到新业务代码。
 
 需要 **Android 7.0 / API 24 以上**，以及 **Android System WebView / Chrome 91 以上**。在手机打开 APK 按系统提示安装。官方版本使用固定签名，可覆盖升级并保留应用数据。当前源码可游客进入；悬浮歌词首次使用需要用户在系统中允许“显示在其他应用上层”。
 
@@ -77,14 +77,14 @@ npm run android:build
 
 `npm run android:build` 包含类型检查、业务测试、生产构建、Capacitor sync、Android 应用单元测试，并生成 Release、Debug 与 instrumentation 测试 APK。设备测试的执行方法见 [Android 原生验证](docs/ANDROID-TESTING.md)。
 
-构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.4.apk`，并在本地生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.4.release.json`。`artifacts/release.json` 指向最近一次构建记录。这些校验与来源文件保留在本地归档，发布页只上传最终 APK，并将相关摘要写入发布说明。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
+构建脚本生成签名 Release APK：`artifacts/Yuyin-Mobile-0.1.5.apk`，并在本地生成相邻的 `.sha256` 文件和 `Yuyin-Mobile-0.1.5.release.json`。`artifacts/release.json` 指向最近一次构建记录。这些校验与来源文件保留在本地归档，发布页只上传最终 APK，并将相关摘要写入发布说明。后续版本沿用 `Yuyin-Mobile-<版本号>.apk` 文件名。核对实际产物时以该次构建生成的记录为准。旧版本 APK 及版本记录继续保留，手机使用同一发布签名进行覆盖升级。
 
 首次构建会在本机用户数据目录 `YuyinMobile/signing` 保存固定的 Release 签名密钥和配置，Windows 对应 `%LOCALAPPDATA%\YuyinMobile\signing`，后续升级复用同一签名。请私下备份整个签名目录；密钥和配置不进入 Git，也不随 APK 分发。也可通过 `YUYIN_ANDROID_KEYSTORE`、`YUYIN_ANDROID_KEY_PASSWORD`、`YUYIN_ANDROID_KEY_ALIAS` 指定自己的签名。自行生成的签名与官方签名不同，不能覆盖升级官方安装包。
 
 更新手机版本使用项目自己的脚本，同时递增 Android versionCode：
 
 ```powershell
-node scripts/set-version.mjs 0.1.3 4
+node scripts/set-version.mjs 0.1.6 7
 npm run android:build
 ```
 
@@ -105,6 +105,6 @@ npm run android:build
 | 验证记录、管理约定 | `docs/` |
 | 本机临时验证材料 | `.qa/`，不纳入 Git |
 
-源码仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。贡献前阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；修改样式参照 [UI-GUIDE.md](docs/UI-GUIDE.md)，Agent 工作入口为 [AGENTS.md](AGENTS.md)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.3.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。
+源码仓库：[panda472328/yuyin-music-mobile](https://github.com/panda472328/yuyin-music-mobile)。贡献前阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；修改样式参照 [UI-GUIDE.md](docs/UI-GUIDE.md)，Agent 工作入口为 [AGENTS.md](AGENTS.md)。详见 [更新记录](CHANGELOG.md)、[当前版本验证记录](docs/QA-0.1.5.md) 和 [文件与版本管理](docs/PROJECT-MANAGEMENT.md)。
 
 安装文件与版本来源见 [发布说明](docs/RELEASE.md)。项目源码采用 [MIT 许可证](LICENSE)，第三方许可及内容归属见 [第三方声明](THIRD_PARTY_NOTICES.md) 和仓库中的 [原始许可文本](licenses/)。音视频、歌词及第三方依赖保留各自的权利和许可证。

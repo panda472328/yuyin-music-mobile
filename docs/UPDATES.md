@@ -2,6 +2,8 @@
 
 Android 从本仓库的 `updates/stable.json` 检查正式版本；PC 使用独立仓库和独立清单。提交代码到 GitHub 不等于通知用户，只有正式安装文件公开并成功更新清单，客户端才会发现新版本。
 
+当前正式版本为 **0.1.5 / versionCode 6**。GitHub 与 Gitee 各公开唯一相同 APK，两份清单指向该版本；Gitee Release / 附件为 `1207438` / `3396897`，大小 `5114211` 字节、SHA-256 `eaac052c9fb797889c77bbfc34b9f0a0158768708ffa373b85a65c18c86ae744`。国内候选在匿名完整下载和附件身份回读通过后生成。原有 0.1.4 双源更新器可发现新版，国内优先、GitHub 备用；升级仍须用户确认。实际覆盖安装、签名及验证限制见 [QA-0.1.5.md](QA-0.1.5.md)。
+
 手机版已有独立 [Gitee 源码仓库](https://gitee.com/openmusic/openmusic-mobile)。0.1.4 正式 APK 加入双源更新器，优先国内同版本文件，并保留 GitHub 备用；0.1.3 仍只检查 GitHub，需先经 GitHub 更新或手动覆盖安装 0.1.4。建立或推送源码不会改变旧客户端。0.1.4 的最终附件、更新清单与正式覆盖升级结果见 [QA-0.1.4.md](QA-0.1.4.md)。2026-10-14 尚无国内附件时的受控验证保留在 [QA-DOMESTIC-UPDATES.md](QA-DOMESTIC-UPDATES.md)，不代替正式线上校验。
 
 ## 国内检查和下载（0.1.4 起）
