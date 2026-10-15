@@ -71,11 +71,11 @@ try {
   })
   await check('classic, Bilibili, system light/dark and pixel themes persist and fit mobile layouts', async () => {
     await page.getByRole('button', { name: '设置', exact: true }).click()
-    for (const [theme, label, scheme] of [['classic', '经典配色', 'light'], ['bilibili', 'Bilibili', 'light'], ['system', '跟随系统', 'light'], ['system', '跟随系统', 'dark'], ['pixel', '像素风', 'light']]) {
+    for (const [theme, label, scheme] of [['classic', '经典 · 草木', 'light'], ['bilibili', 'Bilibili', 'light'], ['system', '跟随系统', 'light'], ['system', '跟随系统', 'dark'], ['pixel', '我的世界', 'light']]) {
       await page.emulateMedia({ colorScheme: scheme })
       await page.locator('.theme-settings').getByRole('button', { name: new RegExp(`^${label}`) }).click()
       await page.waitForFunction(theme => (document.documentElement.dataset.theme ?? 'classic') === theme, theme)
-      const expected = theme === 'system' && scheme === 'dark' ? 'rgb(23, 25, 29)' : theme === 'bilibili' ? 'rgb(248, 249, 252)' : theme === 'pixel' ? 'rgb(243, 248, 243)' : theme === 'system' ? 'rgb(247, 247, 247)' : 'rgb(247, 248, 243)'
+      const expected = theme === 'system' && scheme === 'dark' ? 'rgb(23, 25, 29)' : theme === 'bilibili' ? 'rgb(247, 248, 250)' : theme === 'pixel' ? 'rgb(198, 198, 198)' : theme === 'system' ? 'rgb(247, 247, 247)' : 'rgb(247, 248, 243)'
       await page.waitForFunction(expected => getComputedStyle(document.documentElement).backgroundColor === expected, expected)
       for (const viewport of [{ width: 320, height: 740 }, { width: 360, height: 800 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport)
@@ -85,7 +85,7 @@ try {
     await page.reload(); await page.getByRole('button', { name: '暂不登录，先逛逛' }).click(); await page.getByRole('button', { name: '设置', exact: true }).click()
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'pixel')
     await page.evaluate(() => { window.__mobileQA.failSave = true })
-    await page.getByRole('button', { name: /^经典配色/ }).click()
+    await page.getByRole('button', { name: /^经典 · 草木/ }).click()
     await page.getByRole('alert').filter({ hasText: '设置存储失败' }).waitFor()
     assert(await page.evaluate(() => document.documentElement.dataset.theme) === 'pixel', 'Failed save changes theme')
     await page.evaluate(() => { window.__mobileQA.failSave = false })

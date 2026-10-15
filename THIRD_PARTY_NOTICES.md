@@ -42,3 +42,7 @@ JUnit、AndroidX Test 和 Espresso 用于测试。测试依赖按其自己的许
 ## 更新规则
 
 升级依赖时同时核对 npm 锁文件、Gradle 解析后的正式运行时依赖，以及原 LICENSE / NOTICE；新增组件应补充源码仓库的本文件和 `licenses/`，发布说明同步链接该版本对应的许可文档。不得通过替换原版权行或统一改为 MIT 的方式处理第三方文本。
+
+## 本地像素字体
+
+界面、歌词和 Android 悬浮文字使用 [Fusion Pixel 12px](https://github.com/TakWolf/fusion-pixel-font) 简中 `2026.09.25`，SIL OFL 1.1。Web WOFF2 与原生解压 OpenType 使用相同字形，来源、摘要与完整原始／组成字体许可见 [public/licenses/fusion-pixel](public/licenses/fusion-pixel/)，随网页资源一起打入 APK。不能以本项目 MIT 替换字体许可；本主题不含游戏贴图或游戏字体。

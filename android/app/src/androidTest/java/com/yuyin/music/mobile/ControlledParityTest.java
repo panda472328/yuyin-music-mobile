@@ -186,6 +186,21 @@ public class ControlledParityTest {
             SystemClock.sleep(3300); assertEquals(View.GONE,((View)field(overlay,"toolbarHost")).getVisibility());
             text=(View)field(overlay,"text"); point=center(text); input(point[0],point[1],point[0],point[1]); SystemClock.sleep(200); assertEquals(View.VISIBLE,((View)field(overlay,"toolbarHost")).getVisibility());
             LinearLayout tools=(LinearLayout)field(overlay,"toolbar"); View font=tools.getChildAt(3); point=center(font); input(point[0],point[1],point[0],point[1]); SystemClock.sleep(200); assertEquals("serif",FloatingLyricsWindow.settings(context).getString("font"));
+            assertEquals("classic",FloatingLyricsWindow.normalize(new JSONObject()).optString("style"));
+            assertEquals("classic",FloatingLyricsWindow.normalize(new JSONObject().put("style","unknown")).optString("style"));
+            for (String style : new String[]{"focus","paper","minecraft","classic"}) {
+                JSONObject styled=FloatingLyricsWindow.settings(context).put("style",style).put("color","gold").put("fontSize",32).put("opacity",.7);
+                assertTrue(FloatingLyricsWindow.save(context,styled)); SystemClock.sleep(350);
+                assertEquals(style,FloatingLyricsWindow.settings(context).getString("style"));
+                assertEquals("serif",FloatingLyricsWindow.settings(context).getString("font"));
+                assertEquals(.7,FloatingLyricsWindow.settings(context).getDouble("opacity"),.0001);
+                tools=(LinearLayout)field(overlay,"toolbar"); assertEquals(10,tools.getChildCount());
+                assertEquals(!style.equals("minecraft"),tools.getChildAt(3).isEnabled());
+                if(style.equals("minecraft")) assertNotNull("Bundled native font must actually load",field(overlay,"pixelTypeface"));
+                android.graphics.Bitmap styledImage=instrumentation.getUiAutomation().takeScreenshot();
+                assertNotNull(styledImage);
+                try(OutputStream output=new FileOutputStream(new File(context.getCacheDir(),"qa-lyric-style-"+style+".png"))) { styledImage.compress(android.graphics.Bitmap.CompressFormat.PNG,100,output); } finally { styledImage.recycle(); }
+            }
             assertTrue(instrumentation.getUiAutomation().setRotation(android.app.UiAutomation.ROTATION_FREEZE_90)); SystemClock.sleep(500);
             View rotated=(View)field(overlay,"text"); int[] location=new int[2]; main(() -> rotated.getLocationOnScreen(location));
             android.graphics.Point screen=new android.graphics.Point(); main(() -> ((android.view.WindowManager)context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getSize(screen));

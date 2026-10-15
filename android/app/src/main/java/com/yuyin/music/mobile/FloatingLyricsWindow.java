@@ -39,6 +39,7 @@ final class FloatingLyricsWindow {
     private String currentLine = "", nextLine = "";
     private boolean destroyed;
     private View toolbarHost;
+    private Typeface pixelTypeface;
     private final Runnable hideTools = () -> { if (toolbarHost != null && !settings.optBoolean("locked")) toolbarHost.setVisibility(View.GONE); };
 
     FloatingLyricsWindow(Context context, Supplier<JSObject> status, Consumer<String> transport) {
@@ -55,6 +56,7 @@ final class FloatingLyricsWindow {
         try {
             result.put("enabled", raw.opt("enabled") instanceof Boolean && raw.optBoolean("enabled"));
             result.put("locked", raw.opt("locked") instanceof Boolean && raw.optBoolean("locked"));
+            result.put("style", validStyle(raw.optString("style")) ? raw.optString("style") : "classic");
             String font = raw.optString("font", "sans"), color = raw.optString("color", "white");
             result.put("font", java.util.Arrays.asList("sans", "serif", "kai", "rounded").contains(font) ? font : "sans");
             result.put("color", java.util.Arrays.asList("white", "mint", "gold").contains(color) ? color : "white");
@@ -63,6 +65,16 @@ final class FloatingLyricsWindow {
             result.put("x", numeric(raw.opt("x"), .5, 0, 1)); result.put("y", numeric(raw.opt("y"), .2, 0, 1));
         } catch (Exception impossible) { throw new IllegalStateException(impossible); }
         return result;
+    }
+    static boolean validStyle(String value) { return java.util.Arrays.asList("classic", "focus", "paper", "minecraft").contains(value); }
+    private Typeface effectiveTypeface() {
+        if ("minecraft".equals(settings.optString("style"))) {
+            if (pixelTypeface == null) pixelTypeface = Typeface.createFromAsset(context.getAssets(), "fonts/fusion-pixel.otf");
+            return pixelTypeface;
+        }
+        String font = settings.optString("font");
+        String family = "serif".equals(font) || "kai".equals(font) ? "serif" : "rounded".equals(font) ? "sans-serif-rounded" : "sans-serif";
+        return Typeface.create(family, "kai".equals(font) || "paper".equals(settings.optString("style")) ? Typeface.BOLD_ITALIC : Typeface.BOLD);
     }
     private static double numeric(Object value, double fallback, double min, double max) { if (!(value instanceof Number)) return fallback; double number = ((Number) value).doubleValue(); return Double.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback; }
     static JSObject state(Context context) { try { JSObject value = new JSObject(settings(context).toString()); value.put("permission", permission(context)); return value; } catch (Exception impossible) { throw new IllegalStateException(impossible); } }
@@ -97,7 +109,7 @@ final class FloatingLyricsWindow {
     }
     private int dp(float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
     private int textWidth(Point screen) {
-        Paint measure = new Paint(Paint.ANTI_ALIAS_FLAG); measure.setTypeface(Typeface.DEFAULT_BOLD);
+        Paint measure = new Paint(Paint.ANTI_ALIAS_FLAG); measure.setTypeface(effectiveTypeface());
         measure.setTextSize((float) settings.optDouble("fontSize", 24) * context.getResources().getDisplayMetrics().scaledDensity);
         return Math.min(screen.x - dp(16), Math.max(dp(180), Math.min(dp(640), (int) Math.ceil(Math.max(measure.measureText(currentLine), measure.measureText(nextLine) * .76f)) + dp(32))));
     }
@@ -118,6 +130,7 @@ final class FloatingLyricsWindow {
         if (!settings.optBoolean("locked")) {
             button("previous", "上一首", () -> transport.accept("previous")); button("pause", "播放或暂停", () -> transport.accept("pause")); button("next", "下一首", () -> transport.accept("next"));
             button("font", "切换歌词字体", () -> cycle("font", new String[] {"sans", "serif", "kai", "rounded"}));
+            if ("minecraft".equals(settings.optString("style"))) { View font = toolbar.getChildAt(3); font.setEnabled(false); font.setAlpha(.45f); font.setContentDescription("我的世界样式使用内置像素字体"); }
             button("size", "切换歌词字号", () -> change("fontSize", settings.optDouble("fontSize") >= 40 ? 16 : settings.optDouble("fontSize") + 2));
             button("color", "切换歌词颜色", () -> cycle("color", new String[] {"white", "mint", "gold"}));
         }
@@ -125,10 +138,11 @@ final class FloatingLyricsWindow {
         if (!settings.optBoolean("locked")) {
             button("opacity", "切换歌词透明度", () -> change("opacity", settings.optDouble("opacity") <= .31 ? 1 : settings.optDouble("opacity") - .1));
             button("close", "关闭悬浮歌词", () -> change("enabled", false));
+            button("style", "切换悬浮歌词样式", () -> cycle("style", new String[] {"classic", "focus", "paper", "minecraft"}));
         }
         // On narrow phones the unlocked bar scrolls; the locked window is only the central lock.
-        int toolbarWidth = settings.optBoolean("locked") ? dp(44) : Math.min(size.x - dp(8), dp(396));
-        if (toolbarWidth < dp(396) && !settings.optBoolean("locked")) {
+        int toolbarWidth = settings.optBoolean("locked") ? dp(44) : Math.min(size.x - dp(8), dp(440));
+        if (toolbarWidth < dp(440) && !settings.optBoolean("locked")) {
             // Two rows would shift lyrics; use compact icons with 44dp touch regions in a horizontal scroller.
             android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(context); scroll.setHorizontalScrollBarEnabled(false); scroll.setFillViewport(false); scroll.addView(toolbar); toolbarHost = scroll;
         } else toolbarHost = toolbar;
@@ -166,15 +180,24 @@ final class FloatingLyricsWindow {
         LyricsView() { super(context); setBackgroundColor(Color.TRANSPARENT); setFocusable(true); }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas); float scaled = context.getResources().getDisplayMetrics().scaledDensity;
-            String font = settings.optString("font"); paint.setTypeface("serif".equals(font) ? Typeface.create("serif", Typeface.BOLD) : "kai".equals(font) ? Typeface.create("serif", Typeface.ITALIC) : "rounded".equals(font) ? Typeface.create("sans-serif-rounded", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.BOLD));
+            paint.setTypeface(effectiveTypeface()); paint.setAntiAlias(!"minecraft".equals(settings.optString("style")));
             draw(canvas, currentLine, (float) settings.optDouble("fontSize", 24) * scaled, getHeight() * .40f, true);
             draw(canvas, nextLine, (float) settings.optDouble("fontSize", 24) * scaled * .76f, getHeight() * .82f, false);
         }
         private void draw(Canvas canvas, String value, float size, float y, boolean active) {
-            paint.setTextSize(size); if (paint.measureText(value) > getWidth() - dp(16)) paint.setTextSize(size * (getWidth() - dp(16)) / paint.measureText(value));
-            paint.setTextAlign(Paint.Align.CENTER); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2)); paint.setColor(Color.argb(220, 10, 15, 18)); canvas.drawText(value, getWidth() / 2f, y, paint);
-            paint.setStyle(Paint.Style.FILL); paint.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
-            String color = settings.optString("color"); paint.setColor(active ? "mint".equals(color) ? Color.rgb(191, 255, 222) : "gold".equals(color) ? Color.rgb(255, 226, 156) : Color.WHITE : Color.rgb(220, 225, 227)); canvas.drawText(value, getWidth() / 2f, y, paint); paint.clearShadowLayer();
+            String style = settings.optString("style"); boolean pixel = "minecraft".equals(style);
+            float available = Math.max(1, getWidth() - dp(pixel ? 32 : 16));
+            paint.setTextSize(size); float measured = paint.measureText(value);
+            if (measured > available) paint.setTextSize(size * available / measured);
+            float width = paint.measureText(value), center = getWidth() / 2f + (pixel ? dp(4) : 0);
+            paint.setTextAlign(Paint.Align.CENTER); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2)); paint.setColor(Color.argb(220, 10, 15, 18)); canvas.drawText(value, center, y, paint);
+            paint.setStyle(Paint.Style.FILL); paint.setShadowLayer(pixel ? .01f : dp(2), pixel ? dp(2) : 0, dp(1), Color.BLACK);
+            String color = settings.optString("color"); paint.setColor(active ? "mint".equals(color) ? Color.rgb(191, 255, 222) : "gold".equals(color) ? Color.rgb(255, 226, 156) : Color.WHITE : Color.rgb(220, 225, 227)); canvas.drawText(value, center, y, paint);
+            if (active && !value.isEmpty()) {
+                if (pixel) canvas.drawRect(center - width / 2 - dp(10), y - dp(8), center - width / 2 - dp(5), y - dp(3), paint);
+                else if ("focus".equals(style) || "paper".equals(style)) { paint.setStrokeWidth(dp("focus".equals(style) ? 2 : 1)); canvas.drawLine(center - width / 2, y + dp(5), center + width / 2, y + dp(5), paint); }
+            }
+            paint.clearShadowLayer();
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (settings.optBoolean("locked")) return false;
@@ -203,6 +226,7 @@ final class FloatingLyricsWindow {
             else if ("next".equals(icon) || "previous".equals(icon)) { if ("previous".equals(icon)) canvas.scale(-1, 1); android.graphics.Path p = new android.graphics.Path(); p.moveTo(-7, -7); p.lineTo(5, 0); p.lineTo(-7, 7); p.close(); canvas.drawPath(p, paint); canvas.drawLine(8, -7, 8, 7, paint); }
             else if ("color".equals(icon)) { canvas.drawCircle(0, 0, 9, paint); canvas.drawCircle(-3, -3, 1, paint); canvas.drawCircle(4, -1, 1, paint); }
             else if ("opacity".equals(icon)) { canvas.drawCircle(0, 0, 9, paint); paint.setStyle(Paint.Style.FILL); canvas.drawArc(-9, -9, 9, 9, 90, 180, true, paint); }
+            else if ("style".equals(icon)) { canvas.drawRect(-8, -8, 8, 8, paint); canvas.drawLine(-5, -3, 5, -3, paint); canvas.drawLine(-5, 2, 2, 2, paint); }
             else { paint.setStyle(Paint.Style.FILL); paint.setTextSize("size".equals(icon) ? 19 : 16); paint.setTypeface(Typeface.DEFAULT_BOLD); paint.setTextAlign(Paint.Align.CENTER); canvas.drawText("size".equals(icon) ? "A" : "Aa", 0, 6, paint); }
             canvas.restore();
         }

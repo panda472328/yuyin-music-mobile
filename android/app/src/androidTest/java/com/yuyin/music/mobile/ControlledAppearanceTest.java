@@ -39,7 +39,7 @@ public class ControlledAppearanceTest {
                 scenario.onActivity(activity -> {
                     boolean systemDark = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
                     assertEquals(theme.equals("system") && systemDark, dark);
-                    String expected = theme.equals("system") ? dark ? "#17191d" : "#f7f7f7" : theme.equals("bilibili") ? "#f8f9fc" : theme.equals("pixel") ? "#f3f8f3" : "#f7f8f3";
+                    String expected = theme.equals("system") ? dark ? "#17191d" : "#f7f7f7" : theme.equals("bilibili") ? "#f7f8fa" : theme.equals("pixel") ? "#c6c6c6" : "#f7f8f3";
                     assertEquals(Color.parseColor(expected), activity.getWindow().getStatusBarColor());
                     int flags = activity.getWindow().getDecorView().getSystemUiVisibility();
                     assertEquals(!dark, (flags & View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0);

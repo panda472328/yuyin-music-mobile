@@ -1,13 +1,14 @@
 import { parseLibraryBackup, type LibraryState } from './library'
 import { normalizePreferences } from './preferences'
 import type { MobilePreferences, FloatingLyricsSettings } from '../native/contract'
+import { isLyricStyle } from '../shared/lyric-styles'
 
 export interface MobileBackup { library: LibraryState; preferences?: MobilePreferences; floatingLyrics?: FloatingLyricsSettings }
 export function normalizeFloating(value: unknown): FloatingLyricsSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('悬浮歌词备份格式不正确。')
   const raw = value as Record<string, unknown>
   const numeric = (key: string, min: number, max: number, fallback: number) => typeof raw[key] === 'number' && Number.isFinite(raw[key]) ? Math.min(max, Math.max(min, raw[key] as number)) : fallback
-  return { enabled: raw.enabled === true, locked: raw.locked === true, font: ['sans', 'serif', 'kai', 'rounded'].includes(String(raw.font)) ? raw.font as FloatingLyricsSettings['font'] : 'sans', color: ['white', 'mint', 'gold'].includes(String(raw.color)) ? raw.color as FloatingLyricsSettings['color'] : 'white', fontSize: numeric('fontSize', 16, 40, 24), opacity: numeric('opacity', .3, 1, 1), x: numeric('x', 0, 1, .5), y: numeric('y', 0, 1, .2), permission: false }
+  return { enabled: raw.enabled === true, locked: raw.locked === true, style: isLyricStyle(raw.style) ? raw.style : 'classic', font: ['sans', 'serif', 'kai', 'rounded'].includes(String(raw.font)) ? raw.font as FloatingLyricsSettings['font'] : 'sans', color: ['white', 'mint', 'gold'].includes(String(raw.color)) ? raw.color as FloatingLyricsSettings['color'] : 'white', fontSize: numeric('fontSize', 16, 40, 24), opacity: numeric('opacity', .3, 1, 1), x: numeric('x', 0, 1, .5), y: numeric('y', 0, 1, .2), permission: false }
 }
 export const MAX_BACKUP_BYTES = 8 * 1024 * 1024
 export function parseBackup(text: string): MobileBackup {

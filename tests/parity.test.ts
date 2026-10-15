@@ -2,11 +2,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createBackup, parseBackup, MAX_BACKUP_BYTES } from '../src/domain/backup'
 import { initializeLibrary, mergeLibraryBackup, parseLibraryBackup, removeFromQueue, type LibraryState } from '../src/domain/library'
-import { defaultPreferences } from '../src/domain/preferences'
+import { defaultPreferences, normalizePreferences } from '../src/domain/preferences'
 import type { Song } from '../src/types'
+import { LYRIC_STYLE_OPTIONS } from '../src/shared/lyric-styles'
 
 const song = (id: number): Song => { const bvid = `BV${String(id).padStart(10, '0')}`; return { id: bvid, bvid, title: `虚构歌曲 ${id}`, artist: '虚构歌手', cover: '', duration: 200, playCount: 10, source: 'bilibili', url: `https://www.bilibili.com/video/${bvid}/` } }
 const library = (): LibraryState => initializeLibrary({ getItem: () => null, setItem: () => {} }).state
+
+test('independent lyric styles survive backups, keep font and timing, and migrate old records', () => {
+  for (const { value: lyricStyle } of LYRIC_STYLE_OPTIONS) {
+    const preferences = { ...defaultPreferences(), theme: 'bilibili' as const, lyricStyle, lyricOffsets: { 'bilibili:BV0000000001': -.4 } }
+    const floating = { enabled: false, locked: false, style: 'minecraft' as const, font: 'serif' as const, fontSize: 32, color: 'gold' as const, opacity: .6, x: .3, y: .4, permission: false }
+    const restored = parseBackup(createBackup(library(), preferences, floating))
+    assert.deepEqual(restored.preferences, preferences)
+    assert.deepEqual(restored.floatingLyrics, floating)
+    assert.equal(normalizePreferences({ ...preferences, theme: 'pixel' }).lyricStyle, lyricStyle)
+  }
+  assert.equal(normalizePreferences({ version: 1, lyricOffsets: {} }).lyricStyle, 'classic')
+  assert.equal(normalizePreferences({ ...defaultPreferences(), lyricStyle: 'unknown' }).lyricStyle, 'classic')
+  const old = JSON.parse(createBackup(library(), defaultPreferences(), { enabled: false, locked: false, font: 'serif', fontSize: 28, color: 'mint', opacity: .5, x: .2, y: .6, permission: false }))
+  delete old.preferences.lyricStyle; delete old.floatingLyrics.style
+  assert.equal(parseBackup(JSON.stringify(old)).preferences?.lyricStyle, 'classic')
+  assert.equal(parseBackup(JSON.stringify(old)).floatingLyrics?.style, 'classic')
+  assert.equal(parseBackup(JSON.stringify(old)).floatingLyrics?.font, 'serif')
+})
 
 test('PC bare JSON and mobile backup preserve music, mute volume, theme and calibrated lyrics without credentials', () => {
   const state = { ...library(), favorites: [song(1)], settings: { volume: 0, volumeBeforeMute: .45, playMode: 'shuffle' as const, autoPlayFirst: false } }

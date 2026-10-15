@@ -1,6 +1,6 @@
 # 跨平台界面规范
 
-当前手机源码对齐 PC 0.5.3 的品牌、四套主题及适合触屏的功能，尚未发布新 APK。手机版 0.1.1 对齐 PC 0.4.9 的历史基线为 `01b76bff9ee7e1f8b7d06459de6e6f4cbf71ffea`；本轮参考 PC 提交 `a3ab747`。两平台继续在各自目录和仓库内维护，不建立跨目录源码依赖。
+当前已发布 APK 为 0.1.4；本次源码在此基础上同步 PC 0.5.3 工作区的新版主题与独立歌词预设，尚未发布包含本轮 UI 的新 APK。手机版 0.1.1 对齐 PC 0.4.9 的历史基线为 `01b76bff9ee7e1f8b7d06459de6e6f4cbf71ffea`；上一轮功能基线参考 PC 提交 `a3ab747`，本次主题同步来源与验证见 [UI 同步记录](QA-UI-SYNC-20261015.md)。两平台继续在各自目录和仓库内维护，不建立跨目录源码依赖。
 
 本文用于开发者和 Agent 修改源码样式。先选对应入口，保持语义变量、组件状态和系统主题一致，再按末尾的验证流程检查实际界面。PC 版的样式入口以 [PC 仓库](https://github.com/panda472328/yuyin-music) 自己的规范为准。
 
@@ -9,7 +9,7 @@
 | 想修改的内容 | 文件与定位 | 需要同步检查 |
 | --- | --- | --- |
 | 全局主题配色 | `src/theme.css` 的经典根 token 与 `data-theme` 覆盖；`src/theme.ts` 应用主题 | 正文、按钮、选中、禁用、错误、歌词、弹层和原生系统栏 |
-| 字体、字号、间距、圆角、阴影 | `src/styles.css`，从 `:root` 和目标组件类查找 | 长文字、窄屏、键盘焦点与低高度屏幕 |
+| 字体、字号、间距、圆角、阴影 | `src/styles.css`；最后由 `src/appearance.css` 覆盖，修改前定位最终选择器 | 长文字、窄屏、键盘焦点与低高度屏幕 |
 | 顶栏、品牌与头像菜单 | `.topbar`、`.brand`、`.account-*` | 登录与已登录、头像缺失、菜单打开 |
 | 首页卡片与唱片 | `.discovery-card`、`.hero-art`、`.record*` | 320 / 360 像素宽度与横屏，不遮挡文案 |
 | 搜索、歌曲列表与选中态 | `src/SearchBox.tsx`、`.search-*`、`.song-*`、`.is-current` | 模式切换保留输入、联想、IME、连续加载、手动播放 |
@@ -60,17 +60,17 @@
 
 展示品牌使用 `open音乐` 和 `OPEN MUSIC`，open 小写。经典主题保留绿底米白声波图标、左下角较小的圆角、米白面板、黑胶唱片及深绿歌词高亮。兼容包名、存储键、产物名和仓库地址中的 Yuyin / yuyin 不改；历史发布与验证记录保留原意。
 
-设置页 `.theme-settings` 提供 `classic`、`bilibili`、`system`、`pixel`；经典以缺省根 token 为准，其他主题由 `:root[data-theme]` 选择器覆盖。`system` 用 `data-system-scheme` 区分明暗，Android 原生 `setAppearance` 以实际 uiMode 为准，恢复前台 / 配置变化会重新应用。Bilibili 底色为 `#f8f9fc`、粉色主色 `#bc3569`；系统浅色底 `#f7f7f7`、深色底 `#17191d`；像素底 `#f3f8f3`、主色 `#205c49`。原生状态栏、导航栏及 WebView 背景保持同色。
+设置页 `.theme-settings` 提供 `classic`、`bilibili`、`system`、`pixel`；经典以缺省根 token 为准，其他主题由 `:root[data-theme]` 选择器覆盖。`system` 用 `data-system-scheme` 区分明暗，Android 原生 `setAppearance` 以实际 uiMode 为准，恢复前台 / 配置变化会重新应用。Bilibili 底色为 `#f7f8fa`，品牌粉色 `#ff6699`、文字主色采用更深的粉色以保持对比；系统浅色底 `#f7f7f7`、深色底 `#17191d`；像素 ID 保持 `pixel`，展示名“我的世界”，底色 `#c6c6c6`，灰色物品栏、斜边按钮与绿色播放进度。原生状态栏、导航栏及 WebView 背景保持同色。
 
-新增组件优先复用 `--canvas`、`--surface`、`--ink`、`--green`、`--muted`、`--line` 等语义 token。旧组件装饰色使用 `--theme-*` 加经典色 fallback；非经典主题通过 `--ui-*` 映射，不改默认经典色。像素主题的方角与格线在 `styles.css` 最后覆盖，修改圆角时同时检查迷你播放器、搜索联想、评论排序 / 回复和弹层。
+新增组件优先复用 `--canvas`、`--surface`、`--ink`、`--green`、`--muted`、`--line` 等语义 token。旧组件装饰色使用 `--theme-*` 加经典色 fallback；非经典主题通过 `--ui-*` 映射，不改默认经典色。主题和独立歌词预设在 `appearance.css` 最后覆盖；像素主题改用物品栏斜边和本地字体，修改圆角时同时检查迷你播放器、搜索联想、评论排序 / 回复和弹层。
 
-歌词当前句使用深绿粗体、淡绿高亮底和左侧圆点，普通句使用灰绿文字，来源切换与校准控件采用相同的绿系样式。
+歌词区和歌词行保持透明，文字与当前句使用当前主题的语义颜色。经典用字重与圆点，聚光用较大字重和下划线，手札用衬线／楷体与细线，我的世界用本地像素字体与方块标记。控件继续使用主题颜色；四款歌词预设独立于界面主题。
 
 ## 手机版布局
 
 手机保留底部导航、迷你播放条和底部操作弹层，避免把 PC 侧栏与多列歌曲表挤进窄屏。主要触屏按钮至少 44 像素高，窄屏歌曲列表保留双行文字，首页唱片在右侧独立裁切，不遮挡文案。布局处理手机安全区、320 / 360 像素窄屏和横屏；系统启动页、状态栏沿用米白背景。Android 8 及以上的系统导航栏使用米白背景与深色图标；Android 7 的系统不支持深色导航图标，因此使用品牌绿背景与系统浅色图标，保证可见。
 
-共同配色保存在手机版 `src/theme.css`，页面样式保存在 `src/styles.css`。下次统一调整配色时，分别更新两个仓库并验证各自布局，不建立跨目录依赖。
+共同配色保存在手机版 `src/theme.css`，页面基础样式保存在 `src/styles.css`，本轮最终覆盖保存在 `src/appearance.css`。下次统一调整配色时，分别更新两个仓库并验证各自布局，不建立跨目录依赖。
 
 Android WebView 中没有浏览器地址栏，页面与播放器高度使用 `vh` 单位，兼容项目要求的 WebView 91；不依赖较新浏览器才支持的 `dvh`。预览及错误状态通过明确类名控制，避免依赖 `:has`。
 
@@ -84,7 +84,7 @@ Android WebView 中没有浏览器地址栏，页面与播放器高度使用 `vh
 - 评论页面复用主窗语义 token，适配触屏按钮和屏幕键盘；发表评论的按钮明确说明公开发送到 Bilibili。Cookie、CSRF 和评论目标校验只在原生层，界面草稿不得当成已发送结果。
 - 歌曲正在播放用 `.is-current`；底部导航和歌词当前句用 `.active`；歌词来源用 `.selected`。修改组件时同时查看选中、普通、禁用和错误状态，按上下文保留这些类。
 - 播放器布局根据 `.player-content`、`.preview-mode`、`.has-alert`、`.timing-visible` 调整。改变高度时同时检查空态、播放、预览提示、错误提示和校准展开，避免控件被底部导航覆盖。
-- 歌词当前句保留字体加粗和左侧圆点；修改字体或行高后检查自动滚动及点选句子是否仍准确。样式调整不改变同步偏移或媒体时间。
+- 歌词当前句保留字重或各预设的可见标记；修改字体或行高后检查自动滚动及点选句子是否仍准确。样式调整不改变同步偏移或媒体时间。
 - 底部弹层内部滚动，关闭按钮保持可点；长歌名可以换行，内容不得通过横向溢出扩大页面。
 - 保留 `prefers-reduced-motion`，旋转、平滑滚动和过渡在用户减少动画时降级。
 - 更新卡片复用 `--surface`、`--line`、`--green`、`--muted` 和已有按钮语义。`.update-notes` 保留换行并容纳长说明；`.update-actions` 在窄屏换行，不遮盖底部播放控件。检查、下载期间保留可理解的状态及 disabled，下载可取消，安装由用户明确选择；不要在组件样式中触发检查／下载或改变原生安装与校验逻辑。登录前和设置页的入口分别检查空态、发现新版、进度、失败和已下载状态，详情见 [UPDATES.md](UPDATES.md)。
@@ -96,9 +96,18 @@ Android WebView 中没有浏览器地址栏，页面与播放器高度使用 `vh
 1. 阅读需求与目标组件，检查当前 Git diff，保留已有工作；按上表找到样式入口。
 2. 全局风格改语义变量，局部布局改组件规则；需要新状态时在 React 增加明确类名。不要把保存、登录、歌词或播放业务混入仅样式任务。
 3. 同步调整组件中相应的硬编码装饰色。换主色 / 页面底色时核对 Capacitor 背景、原生启动主题和系统栏。
-4. 运行 `npm run typecheck`、`npm test`、`npm run build`。保留 `npm run dev` 服务，在另一终端执行 `node scripts/verify-ui.mjs`、`node scripts/verify-pc-sync-ui.mjs`、`node scripts/verify-full-parity-ui.mjs`；脚本通过 `ui-fixture.mjs` 使用虚构账号及独立数据，不操作用户会话。新增功能脚本覆盖静音、定时、队列清空、浮窗设置、备份合并与损坏歌库恢复；证据分别留在 `.qa/mobile-ui/`、`.qa/pc-sync-ui/` 和 `.qa/full-parity-ui/`。
+4. 运行 `npm run typecheck`、`npm test`、`npm run build`。保留 `npm run dev` 服务，在另一终端执行 `node scripts/verify-ui.mjs`、`node scripts/verify-pc-sync-ui.mjs`、`node scripts/verify-full-parity-ui.mjs` 和 `node scripts/verify-appearance-ui.mjs`；脚本通过 `ui-fixture.mjs` 使用虚构账号及独立数据，不操作用户会话。新增功能脚本覆盖静音、定时、队列清空、浮窗设置、备份合并与损坏歌库恢复；证据分别留在 `.qa/mobile-ui/`、`.qa/pc-sync-ui/` 和 `.qa/full-parity-ui/`。
 5. 检查登录、首页、搜索、歌单、播放器歌词、账号菜单、设置和弹层截图，覆盖 320 / 360 像素窄屏、844×390 横屏以及长标题。验证可点击、可滚动、无横向溢出；歌词与底部控件同时可用。
 6. Android 系统主题或原生布局有改动时构建 APK，在专用设备验证启动页、系统栏和安全区，按 [ANDROID-TESTING.md](ANDROID-TESTING.md) 验证涉及的原生行为。
 7. 更新本文中变更的配色与规则，并在贡献说明列出修改、截图、检查结果和未验证范围。跨平台主题变更分别提交到两个仓库。
 
 界面测试通过只证明其测试范围；网页截图不能证明原生系统栏正确，模拟器受控媒体也不能证明真实 Bilibili 长时间播放稳定。
+
+## 独立歌词样式与本地字体（2026-10-15）
+
+- `src/shared/lyric-styles.ts` 维护 `classic`、`focus`、`paper`、`minecraft` 稳定 ID，`LyricStylePicker.tsx` 提供带 `aria-pressed` 的预览卡。`ThemeSettings.tsx` 提供四主题预览；两组控件不共用状态。
+- 播放页偏好 `lyricStyle`、悬浮设置 `style` 分别保存；缺省或未知旧值回退经典，JSON 备份保留两者及原字体。均沿已有先保存成功再应用的流程，不改存储版本。
+- `.lyric-window[data-lyric-style]` 只改变字体与文字装饰。切换预设、字体加载和窗口尺寸变化时按实际元素边界重新居中当前句，不改变媒体时钟、来源、offset 或手动播放。
+- 原生 `FloatingLyricsWindow` 的预设只改变文字与测量；背景继续透明。我的世界加载本地 OpenType 字体并禁用字体按钮，原 `font` 保留，切回后恢复；字号、颜色、透明度仍可调整。未锁定工具栏增加样式循环按钮，10 个 44dp 触控区可横向滚动；锁定后仍只显示中央解锁。
+- Web 使用 `src/assets/fonts/fusion-pixel-12px-proportional-zh_hans.woff2`，原生使用 `android/app/src/main/assets/fonts/fusion-pixel.otf`；后者仅为同字形的格式解压，来源、转换与摘要见 `public/licenses/fusion-pixel/SOURCE.md`。主题预览卡保持清晰的小号无衬线文案。许可随网页资源一起打入 APK，不能删除 `public/licenses/fusion-pixel/`。
+- `.block-inventory-art` 只在我的世界主题显示，由布局与 Lucide 图标构成；没有游戏贴图。底部迷你播放器与播放页的绿色进度读取真实播放进度，装饰性物品栏中的短条不承担播放操作。

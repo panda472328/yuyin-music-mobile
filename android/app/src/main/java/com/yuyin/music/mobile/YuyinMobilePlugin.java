@@ -216,7 +216,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
         if (!(theme.equals("classic") || theme.equals("bilibili") || theme.equals("system") || theme.equals("pixel"))) { call.reject("主题参数无效。", "INVALID_THEME"); return; }
         main.post(() -> {
             boolean dark = theme.equals("system") && (getContext().getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-            String background = theme.equals("system") ? dark ? "#17191d" : "#f7f7f7" : theme.equals("bilibili") ? "#f8f9fc" : theme.equals("pixel") ? "#f3f8f3" : "#f7f8f3";
+            String background = theme.equals("system") ? dark ? "#17191d" : "#f7f7f7" : theme.equals("bilibili") ? "#f7f8fa" : theme.equals("pixel") ? "#c6c6c6" : "#f7f8f3";
             Window window = getActivity().getWindow();
             int color = Color.parseColor(background);
             window.setStatusBarColor(color);
@@ -369,7 +369,7 @@ public final class YuyinMobilePlugin extends Plugin implements PlaybackService.L
     @PluginMethod public void getFloatingLyrics(PluginCall call) { call.resolve(FloatingLyricsWindow.state(getContext())); }
     @PluginMethod public void setFloatingLyrics(PluginCall call) {
         JSONObject value = call.getObject("settings");
-        if (value == null) { call.reject("歌词设置格式不正确。", "INVALID_FLOATING_SETTINGS"); return; }
+        if (value == null || (value.has("style") && (!(value.opt("style") instanceof String) || !FloatingLyricsWindow.validStyle(value.optString("style"))))) { call.reject("歌词设置格式不正确。", "INVALID_FLOATING_SETTINGS"); return; }
         JSONObject normalized = FloatingLyricsWindow.normalize(value);
         if (normalized.optBoolean("enabled") && !FloatingLyricsWindow.permission(getContext())) { call.reject("请先允许显示在其他应用上层，然后再开启悬浮歌词。", "OVERLAY_PERMISSION_REQUIRED"); return; }
         storeIo.execute(() -> {

@@ -8,6 +8,8 @@ open音乐的独立 Android 音乐播放器，当前已发布版本为 **0.1.4**
 
 **0.1.3** 增加自动检查新版、用户选择下载与 Android 系统安装确认，继续保留 0.1.2 的登录返回与后台播放修复。类型检查、20 项业务测试、13 项隔离界面检查、7 项原生单元测试和 8 项受控设备测试通过；验证范围见 [0.1.3 验证记录](docs/QA-0.1.3.md)。历史结果保留在 [0.1.2](docs/QA-0.1.2.md)、[0.1.1](docs/QA-0.1.1.md) 和 [0.1.0](docs/QA.md)。真实 Bilibili 登录、实播及不同手机的长时间省电表现需要单独验收。
 
+当前主分支另含尚未发包的新 UI：新版 Bilibili／我的世界主题、主题预览及四款独立歌词预设，见 [源码同步验证](docs/QA-UI-SYNC-20261015.md)。正式 0.1.4 APK 不随源码推送自动改变。
+
 ## 下载和安装
 
 从 [GitHub Releases](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.4) 或 [Gitee Releases](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.4) 下载当前 0.1.4 APK。每个平台仅上传一个安装附件：`Yuyin-Mobile-0.1.4.apk`；SHA-256、实际 APK 构建提交和签名证书摘要写在发布说明中。0.1.4 / versionCode 5 沿用此前的官方签名，可直接覆盖升级。历史标签保留，不移动到新业务代码。

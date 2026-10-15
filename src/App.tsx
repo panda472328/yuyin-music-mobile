@@ -9,6 +9,10 @@ import { addToPlaylist, createPlaylist, deletePlaylist, getNextIndex, importBili
   recordHistory, removeFromQueue, mergeLibraryBackup, removeFromPlaylist, renamePlaylist, toggleFavorite, type LibraryState } from './domain/library'
 import { createBackup, parseBackup, type MobileBackup } from './domain/backup'
 import FloatingLyricsSettings from './components/FloatingLyricsSettings'
+import ThemeSettings from './components/ThemeSettings'
+import ThemeArtwork from './ThemeArtwork'
+import LyricStylePicker from './LyricStylePicker'
+import { LYRIC_STYLE_OPTIONS, type LyricStyle } from './shared/lyric-styles'
 import { activeLyricIndex, parseLrc } from './domain/lyrics'
 import { defaultPreferences } from './domain/preferences'
 import { AccountGateController } from './domain/account-gate'
@@ -287,8 +291,20 @@ export default function App() {
     if (tab !== 'player' || playerPane !== 'lyrics' || calibrating) return
     const container = lyricScroll.current
     const node = lyricNodes.current.get(activeLine)
-    if (container && node) container.scrollTo({ top: node.offsetTop - container.offsetTop - container.clientHeight / 2 + node.clientHeight / 2, behavior: 'smooth' })
-  }, [activeLine, tab, playerPane, calibrating])
+    if (!container || !node) return
+    let stopped = false
+    const centerLine = () => {
+      if (stopped) return
+      const top = container.scrollTop + node.getBoundingClientRect().top - container.getBoundingClientRect().top - (container.clientHeight - node.clientHeight) / 2
+      container.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    }
+    centerLine()
+    const resize = new ResizeObserver(centerLine)
+    resize.observe(container); resize.observe(node)
+    void document.fonts.ready.then(centerLine)
+    document.fonts.addEventListener('loadingdone', centerLine)
+    return () => { stopped = true; resize.disconnect(); document.fonts.removeEventListener('loadingdone', centerLine) }
+  }, [activeLine, tab, playerPane, calibrating, preferences?.lyricStyle])
 
   useEffect(() => {
     if (!dialog) return
@@ -579,7 +595,7 @@ export default function App() {
         <div className="page-intro"><span className="eyebrow">YOUR EVERYDAY SOUNDTRACK</span><h1>发现音乐<span className="heading-dot" aria-hidden="true">.</span></h1><p>让熟悉的旋律，遇见今天的心情。</p></div>
         <SearchBox query={query} mode={searchMode} searching={searching} inputRef={searchInputRef} onQueryChange={changeQuery} onModeChange={changeSearchMode} onSearch={text => void searchSongs(text)} />
         {!result && !searching && !searchedQuery && <>
-          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>把日子，听成<br />喜欢的样子。</h2><p>一首歌，一点留白。<br />搜索喜欢的声音，点击开始播放。</p></div><div className="hero-art" aria-hidden="true"><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={23} /><span>OPEN MUSIC</span></div></div></div></div>
+          <div className="discovery-card"><div><span className="pill"><Radio size={13} />BILIBILI 音乐</span><h2>把日子，听成<br />喜欢的样子。</h2><p>一首歌，一点留白。<br />搜索喜欢的声音，点击开始播放。</p></div><ThemeArtwork /><div className="hero-art" aria-hidden="true"><div className="hero-ring ring-one" /><div className="hero-ring ring-two" /><div className="record"><div className="record-grooves" /><div className="record-label"><AudioLines size={23} /><span>OPEN MUSIC</span></div></div></div></div>
           <div className="section-heading"><h2>从这里开始</h2><span>随心搜索</span></div>
           <div className="suggestions">{['周杰伦', '陈奕迅', '纯音乐', '爵士乐', '雨天', '深夜耳机'].map(text => <button key={text} onClick={() => { changeQuery(text); void searchSongs(text) }}>{text}<ChevronRight size={14} /></button>)}</div>
           <div className="quiet-note"><Heart size={16} /><p>喜欢的歌，点一下爱心收藏。<br />下一次打开，它们还在这里。</p></div>
@@ -616,8 +632,9 @@ export default function App() {
           <div className="player-pane-switch"><button className={playerPane === 'lyrics' ? 'selected' : ''} onClick={() => setPlayerPane('lyrics')}>歌词</button><button className={playerPane === 'queue' ? 'selected' : ''} onClick={() => setPlayerPane('queue')}>播放队列 <small>{library?.queue.length ?? 0}</small></button></div>
           {playerPane === 'lyrics' ? <>
             <div className="lyric-toolbar"><div className="source-select" role="group" aria-label="歌词来源"><button className={provider === 'bilibili' ? 'selected' : ''} onClick={() => setSource('bilibili')}>Bilibili 字幕</button><button className={provider === 'lrclib' ? 'selected' : ''} onClick={() => setSource('lrclib')}>搜索歌词</button></div><button className={`icon-button ${showTiming ? 'selected' : ''}`} aria-label="歌词同步设置" aria-expanded={showTiming} onClick={() => setShowTiming(!showTiming)}><SlidersHorizontal size={18} /></button></div>
+            <label className="lyrics-style-select">歌词样式<select aria-label="播放页歌词样式" value={preferences?.lyricStyle ?? 'classic'} disabled={!canUse} onChange={event => { const lyricStyle = event.target.value as LyricStyle; void run(() => mutatePreferences(state => ({ ...state, lyricStyle }))) }}>{LYRIC_STYLE_OPTIONS.map(style => <option key={style.value} value={style.value}>{style.label}</option>)}</select></label>
             {showTiming && <div className="timing-panel"><div><span>歌词时间偏移</span><strong>{offset > 0 ? '+' : ''}{offset.toFixed(2)} 秒</strong></div><div className="timing-controls"><button onClick={() => changeOffset(-0.25)}>提前 0.25 秒</button><button onClick={() => void run(() => setOffset(provider === 'bilibili' ? -0.25 : 0))}>重置</button><button onClick={() => changeOffset(0.25)}>延后 0.25 秒</button></div><button className={`calibrate-button ${calibrating ? 'active' : ''}`} disabled={!syncedLines.length} onClick={() => setCalibrating(!calibrating)}>{calibrating ? '点击正在唱的那一句，完成对齐' : '听到哪一句，点一下校准'}</button><p>校准按歌曲和歌词来源分别保存。</p></div>}
-            <div className={`lyric-window ${calibrating ? 'is-calibrating' : ''}`} ref={lyricScroll}>
+            <div data-lyric-style={preferences?.lyricStyle ?? 'classic'} className={`lyric-window ${calibrating ? 'is-calibrating' : ''}`} ref={lyricScroll}>
               {lyricsLoading ? <div className="empty-state compact"><LoaderCircle className="spin" size={25} /><p>正在寻找歌词…</p></div> : lyricsError ? <Empty icon={<Music2 size={26} />} title="歌词暂时没有到达" text={lyricsError} action={<button className="text-button" onClick={() => setLyricsRetry(value => value + 1)}><RefreshCw size={16} />重试</button>} /> : syncedLines.length ? <div className="lyric-lines">{syncedLines.map((line, index) => <button key={`${line.time}:${index}`} ref={node => { if (node) lyricNodes.current.set(index, node); else lyricNodes.current.delete(index) }} className={`${activeLine === index ? 'active' : ''} ${!line.text ? 'instrumental-line' : ''}`} onClick={() => lyricClick(line.time)} aria-label={calibrating ? `对齐 ${line.text}` : `跳转到 ${time(line.time + offset)} ${line.text}`}>{line.text || '♪'}</button>)}</div> : lyrics?.match?.plainLyrics ? <div className="plain-lyrics"><span className="plain-label">该来源提供文本歌词，暂不支持逐句同步</span><p>{lyrics.match.plainLyrics}</p></div> : <Empty icon={<AudioLines size={35} />} title={lyrics?.match?.instrumental ? '纯音乐，静静听' : '这首歌还没有歌词'} text={lyrics?.message ?? '可以切换另一个歌词来源试试。'} />}
             </div>
             {lyrics?.subtitle && <p className="lyrics-credit">Bilibili · {lyrics.subtitle.label}{lyrics.subtitle.isAI ? ' · AI 识别字幕' : ''}</p>}
@@ -640,7 +657,8 @@ export default function App() {
         <div className="settings-card"><div className="settings-label"><Music2 size={19} /><span><strong>默认歌词来源</strong><small>切换后，也会记住你的选择</small></span></div><div className="setting-options"><button className={provider === 'bilibili' ? 'selected' : ''} onClick={() => setSource('bilibili')}><span>Bilibili 字幕<small>与视频对应，优先使用</small></span>{provider === 'bilibili' && <Check size={19} />}</button><button className={provider === 'lrclib' ? 'selected' : ''} onClick={() => setSource('lrclib')}><span>搜索歌词<small>来自 LRCLIB，可逐首校准</small></span>{provider === 'lrclib' && <Check size={19} />}</button></div></div>
         <div className="settings-card"><div className="settings-label"><Repeat size={19} /><span><strong>播放模式</strong><small>{modeLabel[library?.settings.playMode ?? 'sequence']}</small></span><button className="text-button" onClick={cycleMode} disabled={!canUse}>切换<ChevronRight size={16} /></button></div></div>
         <div className="settings-card saved-note"><Check size={20} /><span><strong>你的音乐，会被记住</strong><p>收藏、歌单、播放历史、队列、音量和歌词校准都保存在这台手机上。手机版与 PC 版各自独立。</p></span></div>
-        <section className="settings-card theme-settings"><div className="settings-label"><Settings2 size={19} /><span>界面主题</span></div><div className="setting-options">{([{ id: 'classic', label: '经典配色', detail: '保留米白与鼠尾草绿' }, { id: 'bilibili', label: 'Bilibili', detail: '粉白配色' }, { id: 'system', label: '跟随系统', detail: '随手机切换浅色与深色' }, { id: 'pixel', label: '像素风', detail: '方角、格线与像素阴影' }] as const).map(theme => <button key={theme.id} className={(preferences?.theme ?? 'classic') === theme.id ? 'selected' : ''} aria-pressed={(preferences?.theme ?? 'classic') === theme.id} disabled={!canUse} onClick={() => void run(() => mutatePreferences(state => ({ ...state, theme: theme.id })))}><span>{theme.label}<small>{theme.detail}</small></span>{(preferences?.theme ?? 'classic') === theme.id && <Check size={18} />}</button>)}</div></section>
+        <ThemeSettings value={preferences?.theme ?? 'classic'} disabled={!canUse} onChange={theme => void run(() => mutatePreferences(state => ({ ...state, theme })))} />
+        <section className="settings-card" aria-label="播放页歌词样式"><div className="settings-label"><AudioLines size={19} /><span><strong>歌词样式</strong><small>独立于界面主题，切换后自动保存</small></span></div><LyricStylePicker label="播放页歌词样式" value={preferences?.lyricStyle ?? 'classic'} disabled={!canUse} onChange={lyricStyle => void run(() => mutatePreferences(state => ({ ...state, lyricStyle })))} /></section>
         <div className="about"><span className="brand-icon"><AudioLines size={25} /></span><strong>open音乐 · 手机版</strong><span>版本 {packageInfo.version} · Android 预览版</span><p>给生活，留一点余音。</p></div>
       </>}
     </main>}

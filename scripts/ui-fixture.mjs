@@ -18,7 +18,7 @@ window.__mobileQA.staleUpdate=()=>{for(const cb of updateListeners)cb({state:'id
 const listener=(set,callback)=>{set.add(callback);return Promise.resolve({remove:async()=>set.delete(callback)})};
 const fixtureComment={id:'11',rootId:'0',parentId:'0',author:{mid:1234,username:'评论测试用户',avatar:''},message:'这是一条虚构评论',createdAt:1700000000,likeCount:2,replyCount:0,liked:false,replies:[]};
 const postedComments=[];
-let floating=JSON.parse(localStorage.getItem('qa-floating')||'null')||{enabled:false,locked:false,font:"sans",fontSize:24,color:"white",opacity:1,x:.5,y:.2,permission:true};let sleepUntil=null;
+let floating=JSON.parse(localStorage.getItem('qa-floating')||'null')||{enabled:false,locked:false,style:"classic",font:"sans",fontSize:24,color:"white",opacity:1,x:.5,y:.2,permission:true};let sleepUntil=null;
 const storeListeners=new Set();const storeEvent=key=>{for(const cb of storeListeners)cb(key)};
 const nativePlay=selected=>{const lib=JSON.parse(localStorage.getItem('qa-mobile-library')||JSON.stringify(defaultLibrary()));lib.history=[{song:selected,playedAt:Date.now()},...lib.history.filter(item=>item.song.bvid!==selected.bvid)].slice(0,100);localStorage.setItem('qa-mobile-library',JSON.stringify(lib));status={...status,state:'playing',song:selected,currentTime:0,duration:selected.duration};storeEvent('background_history');emit();return {...status}};
 const nativeSkip=direction=>{const lib=JSON.parse(localStorage.getItem('qa-mobile-library')||JSON.stringify(defaultLibrary()));const at=lib.queue.findIndex(s=>s.bvid===status.song?.bvid);const next=lib.queue[(at+direction+lib.queue.length)%lib.queue.length];return next?nativePlay(next):{...status}};

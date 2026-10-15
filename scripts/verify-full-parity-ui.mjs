@@ -63,10 +63,10 @@ try {
     assert(await page.getByLabel('悬浮歌词字体', { exact: true }).inputValue()==='serif','Floating style lost after reload')
   })
   await check('export/preview/merge restore includes preferences and floating styles, failure is atomic in UI', async () => {
-    await page.getByRole('button', { name: /^像素风/ }).click()
+    await page.locator('.theme-settings').getByRole('button', { name: /^我的世界/ }).click()
     await button('导出备份').click(); await page.waitForFunction(() => !!window.__mobileQA.backup)
     await page.evaluate(() => { window.__mobileQA.importData=window.__mobileQA.backup })
-    await page.getByRole('button', { name: /^经典配色/ }).click()
+    await page.getByRole('button', { name: /^经典 · 草木/ }).click()
     await button('导入并合并').click(); await page.getByRole('heading', { name: '合并音乐库备份' }).waitFor()
     await page.getByRole('checkbox').check(); await snapshot('backup-preview')
     await page.evaluate(() => { window.__mobileQA.failSave=true }); await button('确认合并').click()
@@ -77,7 +77,7 @@ try {
     assert(await page.evaluate(() => JSON.parse(localStorage.getItem('qa-mobile-library')).favorites.length===1),'Merge duplicated or removed favorites')
   })
   await check('new settings and backup controls fit 320/360 px and landscape in all themes', async () => {
-    for (const theme of ['经典配色','Bilibili','跟随系统','像素风']) {
+    for (const theme of ['经典 · 草木','Bilibili','跟随系统','我的世界']) {
       await page.locator('.theme-settings').getByRole('button', { name: new RegExp(`^${theme}`) }).click()
       for(const viewport of [{width:320,height:740},{width:360,height:800},{width:844,height:390}]) { await page.setViewportSize(viewport); await snapshot(`${theme}-${viewport.width}`) }
     }

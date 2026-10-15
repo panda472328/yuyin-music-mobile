@@ -1,0 +1,104 @@
+/* Final mobile overrides. Theme IDs and playback actions stay compatible. */
+.settings-card { box-shadow: 0 4px 18px var(--ui-shadow); }
+.settings-label strong { color: var(--ink); }
+.settings-label small { color: var(--text-muted); line-height: 1.7; }
+.song-row:focus-within { background: var(--ui-hover); }
+:root:not([data-theme]) .discovery-card, :root[data-theme="classic"] .discovery-card { background: radial-gradient(ellipse at top left, #f0f4e8, transparent 70%), var(--ui-hero); border: 1px solid #dce5d2; }
+.theme-options, .lyric-style-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.theme-option, .lyric-style-option { min-width: 0; padding: 8px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.theme-option { display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-content: start; gap: 10px 4px; }
+:is(.theme-option, .lyric-style-option).selected { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+:is(.theme-option, .lyric-style-option):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+.theme-option-preview { --preview-canvas: #f7f8f3; --preview-sidebar: #f1f4ec; --preview-player: #fffefa; --preview-accent: #4c663a; display: block; position: relative; height: 76px; width: 100%; grid-column: 1 / -1; overflow: hidden; border: 1px solid #0002; border-radius: 5px; background: var(--preview-canvas); }
+.theme-option-preview-sidebar { position: absolute; inset: 0 0 auto; height: 13px; background: var(--preview-sidebar); border-bottom: 1px solid #0002; }
+.theme-option-preview-content { position: absolute; inset: 14px 0 12px; display: flex; flex-direction: column; gap: 5px; padding: 6px 10px; }
+.theme-option-preview-content i { display: block; height: 4px; width: 65%; background: var(--preview-sidebar); }
+.theme-option-preview-content i:first-child { width: 80%; height: 11px; background: var(--preview-accent); }
+.theme-option-preview-content i:last-child { width: 43%; }
+.theme-option-preview::after { content: ''; position: absolute; inset: auto 0 0; height: 10px; background: var(--preview-player); border-top: 1px solid #0002; }
+.theme-option-preview[data-preview="bilibili"] { --preview-canvas: #f7f8fa; --preview-sidebar: #fff; --preview-player: #fff; --preview-accent: #ff6699; }
+.theme-option-preview[data-preview="system"] { --preview-canvas: #f7f7f7; --preview-sidebar: #e7eaed; --preview-player: #fff; --preview-accent: #0067b8; }
+:root[data-system-scheme="dark"] .theme-option-preview[data-preview="system"] { --preview-canvas: #17191d; --preview-sidebar: #202329; --preview-player: #262a31; --preview-accent: #498bc5; }
+.theme-option-preview[data-preview="pixel"] { --preview-canvas: #c6c6c6; --preview-sidebar: #b4b4b4; --preview-player: #3a3a3a; --preview-accent: #8b8b8b; border-radius: 0; }
+.theme-option-preview[data-preview="pixel"] .theme-option-preview-content i:first-child { border: 2px solid; border-color: #373737 #fff #fff #373737; box-shadow: inset 0 -3px #86bf35; }
+.theme-option-details { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.theme-option-details strong, .lyric-style-detail { font-size: 12px; line-height: 1.5; }
+.theme-option-details small, .lyric-style-description { font-size: 10px; line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; }
+.theme-option-check, .lyric-style-detail svg { color: var(--green); visibility: hidden; }
+.selected .theme-option-check, .selected .lyric-style-detail svg { visibility: visible; }
+.lyric-style-preview { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; min-height: 104px; color: var(--green); overflow: hidden; }
+.lyric-style-preview strong { font-size: 14px; font-weight: 700; }
+.lyric-style-preview small { font-size: 9px; opacity: .65; }
+.lyric-style-detail { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin: 10px 0 5px; }
+.lyric-style-description { display: block; }
+.lyric-style-preview[data-lyric-style="focus"] strong { font-weight: 800; text-decoration: underline; text-underline-offset: 4px; }
+.lyric-style-preview[data-lyric-style="paper"] { font-family: 'KaiTi', 'Noto Serif CJK SC', serif; }
+.lyric-style-preview[data-lyric-style="paper"] strong { border-bottom: 1px solid currentColor; }
+.lyric-style-preview[data-lyric-style="minecraft"] { font-family: 'Fusion Pixel', monospace; }
+.lyric-style-preview[data-lyric-style="minecraft"] strong { font-size: 18px; font-weight: 400; border-left: 4px solid var(--ui-decoration); padding-left: 5px; }
+.lyric-style-options[data-preview-target="desktop"] .lyric-style-preview { color: var(--ink); text-shadow: 0 1px 2px #0003; }
+.lyrics-style-select { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; flex-shrink: 0; margin-bottom: 5px; }
+.lyrics-style-select select { min-height: 44px; min-width: 120px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.lyric-window, :root .lyric-window .lyric-lines > button, :root .lyric-window .lyric-lines > button.active { background: transparent; box-shadow: none; }
+.lyric-window[data-lyric-style="focus"] .lyric-lines > button { font-size: 22px; font-weight: 600; }
+.lyric-window[data-lyric-style="focus"] .lyric-lines > button.active { font-weight: 800; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
+.lyric-window[data-lyric-style="paper"] :is(.lyric-lines > button, .plain-lyrics p) { font-family: 'KaiTi', 'Noto Serif CJK SC', serif; }
+.lyric-window[data-lyric-style="paper"] .lyric-lines > button { border-radius: 0; border-bottom: 1px solid var(--line); }
+.lyric-window[data-lyric-style="minecraft"] :is(.lyric-lines > button, .plain-lyrics p) { font-family: 'Fusion Pixel', monospace; font-size: 24px; font-weight: 400; }
+.lyric-window[data-lyric-style="minecraft"] .lyric-lines > button.active::before { width: 5px; height: 5px; border-radius: 0; background: var(--ui-decoration); box-shadow: 0 -4px var(--ui-decoration), 0 4px var(--ui-decoration), 4px 0 var(--ui-decoration); }
+:root[data-theme="bilibili"] .brand-icon { border-radius: 10px; background: var(--bili-pink); border-bottom: 3px solid #e54d84; }
+:root[data-theme="bilibili"] :is(.topbar, .bottom-nav) { background: #fff; }
+:root[data-theme="bilibili"] .bottom-nav > button.active { box-shadow: inset 0 3px var(--bili-pink); background: var(--ui-selected); }
+:root[data-theme="bilibili"] .discovery-card { border: 1px solid var(--line); border-top: 4px solid var(--bili-pink); border-radius: 12px; box-shadow: 0 5px 20px var(--ui-shadow); }
+:root[data-theme="bilibili"] .pill { color: var(--green); background: transparent; border-radius: 0; border-bottom: 2px solid var(--bili-pink); }
+:root[data-theme="bilibili"] .section-heading h2 { padding-left: 9px; border-left: 4px solid var(--ui-decoration); }
+:root[data-theme="bilibili"] :is(.settings-card, .library-shortcuts > button, .song-row) { background: var(--surface); border-color: var(--line); }
+:root[data-theme="bilibili"] .playlist-art { aspect-ratio: 16 / 9; border-radius: 8px; }
+.block-inventory-art { display: none; }
+:root[data-theme="pixel"] body { font-family: 'Fusion Pixel', 'Consolas', monospace; }
+:root[data-theme="pixel"] .app { background-image: none; }
+:root[data-theme="pixel"] :is(.brand, .page-intro h1, .discovery-card h2) { letter-spacing: 0; font-weight: 400; }
+:root[data-theme="pixel"] :is(.brand small, .eyebrow, .section-heading > span, .song-copy > span, .song-meta) { font-size: 12px; letter-spacing: 0; }
+:root[data-theme="pixel"] :is(.theme-option, .lyric-style-option, .theme-option-preview, .lyrics-style-select select, .playlist-art, .collection-art, .shortcut-icon, .player-pane-switch, .source-select, .settings-fields select) { border-radius: 0; }
+:root[data-theme="pixel"] :is(.settings-card, .discovery-card, .sheet, .account-menu, .library-shortcuts > button) { border: 2px solid var(--line); box-shadow: inset 2px 2px #fff, inset -2px -2px #0003, 3px 3px #0003; }
+:root[data-theme="pixel"] :is(.primary-button, .big-play, .search-submit) { border: 2px solid #242424; background: #6c6c6c; color: #fff; box-shadow: inset 2px 2px #aaa, inset -2px -2px #333, 2px 2px #242424; text-shadow: 1px 1px #222; }
+:root[data-theme="pixel"] :is(.primary-button, .big-play, .search-submit):active { transform: translate(1px, 1px); box-shadow: inset 1px 1px #aaa; }
+:root[data-theme="pixel"] .discovery-card { padding: 20px 16px; background: #c6c6c6; min-height: 228px; }
+:root[data-theme="pixel"] .discovery-card > div:first-child { max-width: 57%; position: relative; z-index: 1; }
+:root[data-theme="pixel"] .discovery-card h2 { font-size: 26px; text-shadow: 1px 1px #eee; }
+:root[data-theme="pixel"] .discovery-card .hero-art { display: none; }
+:root[data-theme="pixel"] .block-inventory-art { display: flex; flex-direction: column; gap: 5px; position: absolute; top: 24px; right: 10px; width: 36%; max-width: 170px; padding: 8px; background: #c6c6c6; border: 2px solid #252525; box-shadow: inset 2px 2px #fff, inset -2px -2px #555, 3px 3px #0003; }
+.block-inventory-title { font-size: 12px; color: #343434; }
+.block-inventory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.block-slot { display: flex; justify-content: center; align-items: center; position: relative; min-width: 0; aspect-ratio: 1; color: #edf0d6; background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; }
+.block-slot svg { width: 70%; height: 70%; filter: drop-shadow(1px 1px #333); }
+.block-slot:nth-child(3) { color: #b53630; }
+.block-slot:nth-child(7) { color: #c9a85a; }
+.block-slot.equipped { color: #b9df6f; background: #5f6d49; outline: 2px solid #f1ffc9; outline-offset: -3px; }
+.block-slot small { position: absolute; right: 0; bottom: -2px; color: #fff; text-shadow: 1px 1px #222; font-size: 10px; }
+.block-inventory-caption { display: flex; gap: 3px; align-items: center; font-size: 11px; }
+.block-inventory-caption svg { width: 13px; flex-shrink: 0; }
+.block-experience { height: 7px; border: 2px solid #232b1b; background: #505641; }
+.block-experience i { display: block; width: 68%; height: 100%; background: #80c32f; box-shadow: inset 0 1px #c1ed6d; }
+:root[data-theme="pixel"] .bottom-nav { background: #b4b4b4; border-top: 3px solid #242424; box-shadow: inset 0 2px #eee; }
+:root[data-theme="pixel"] .bottom-nav > button.active { border: 2px solid #fff; background: #969e89; box-shadow: inset 2px 2px #515746; color: #17220b; }
+:root[data-theme="pixel"] .mini-player { color: #efefef; background: #3a3a3a; border: 2px solid #171717; box-shadow: inset 0 2px #929292; }
+:root[data-theme="pixel"] .mini-player :is(.mini-song strong, .icon-button) { color: #fff; }
+:root[data-theme="pixel"] .mini-song small { color: #d3dbc4; }
+:root[data-theme="pixel"] .mini-progress { background: #86bf35; }
+:root[data-theme="pixel"] .transport { width: max-content; max-width: 100%; gap: 3px; margin-inline: auto; padding: 4px; border: 2px solid #111; background: #333; box-shadow: inset 2px 2px #747474; }
+:root[data-theme="pixel"] .transport .icon-button { color: #efffc9; background: #656565; box-shadow: inset 1px 1px #aaa, inset -1px -1px #3c3c3c; }
+:root[data-theme="pixel"] .big-play { background: #7a855c; border-color: #d1dcad; }
+:root[data-theme="pixel"] .seek-track input { border-radius: 0; border: 1px solid #171717; background: linear-gradient(to right, #86bf35 var(--progress), #171c13 var(--progress)); }
+:root[data-theme="pixel"] input[type="range"]::-webkit-slider-thumb { border-radius: 0; border: 2px solid #e7f6c0; background: #86bf35; }
+:root[data-theme="pixel"] :is(.theme-option, .lyric-style-option) { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+@media (max-width: 360px) {
+  .theme-options, .lyric-style-options { gap: 8px; }
+  .lyric-style-preview strong { font-size: 12px; }
+  .lyric-style-preview[data-lyric-style="minecraft"] strong { font-size: 12px; }
+  :root[data-theme="pixel"] .discovery-card h2 { font-size: 24px; }
+  :root[data-theme="pixel"] .block-inventory-caption svg { display: none; }
+  :root[data-theme="pixel"] .transport { gap: 1px; padding: 3px; }
+  :root[data-theme="pixel"] .transport .icon-button { width: 44px; min-width: 44px; }
+}
+@media (orientation: landscape) and (max-height: 600px) { .theme-options, .lyric-style-options { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

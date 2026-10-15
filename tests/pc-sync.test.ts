@@ -11,7 +11,7 @@ const reply = { rpid: 11, oid: 123, root: 0, parent: 0, ctime: 1, like: 2, rcoun
 const nav = { code: 0, data: { wbi_img: { img_url: 'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png', sub_url: 'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png' } } }
 test('old and unknown theme records preserve lyric calibrations while adopting classic and song defaults', () => {
   const old = { version: 1, lyricsProvider: 'lrclib', lyricOffsets: { [`lrclib:${bvid}`]: 1.25 } }
-  assert.deepEqual(normalizePreferences(old), { ...old, theme: 'classic', searchMode: 'song' })
+  assert.deepEqual(normalizePreferences(old), { ...old, theme: 'classic', searchMode: 'song', lyricStyle: 'classic' })
   assert.equal(normalizePreferences({ ...old, theme: 'future', searchMode: 'bad' }).theme, 'classic')
   for (const theme of ['classic', 'bilibili', 'system', 'pixel']) assert.equal(normalizePreferences({ ...old, theme, searchMode: 'video' }).theme, theme)
 })

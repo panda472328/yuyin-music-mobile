@@ -1,6 +1,7 @@
 import type { PluginListenerHandle } from '@capacitor/core'
 import type { Song, PlaybackStatus } from '../types'
 import type { MobileUpdateState } from '../domain/updates'
+import type { LyricStyle } from '../shared/lyric-styles'
 export interface YuyinNativePlugin {
   skip(options: { direction: -1 | 1 }): Promise<PlaybackStatus>
   getSleepTimer(): Promise<{ until: number | null }>
@@ -41,6 +42,7 @@ export interface FloatingLyricsSettings {
   enabled: boolean
   locked: boolean
   font: 'sans' | 'serif' | 'kai' | 'rounded'
+  style?: LyricStyle
   fontSize: number
   color: 'white' | 'mint' | 'gold'
   opacity: number
@@ -51,6 +53,7 @@ export interface FloatingLyricsSettings {
 export interface MobilePreferences {
   version: 1
   theme?: 'classic' | 'bilibili' | 'system' | 'pixel'
+  lyricStyle?: LyricStyle
   searchMode?: 'song' | 'video'
   lyricsProvider: 'bilibili' | 'lrclib'
   lyricOffsets: Record<string, number>
