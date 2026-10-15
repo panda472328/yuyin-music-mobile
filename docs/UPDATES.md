@@ -2,9 +2,9 @@
 
 Android 从本仓库的 `updates/stable.json` 检查正式版本；PC 使用独立仓库和独立清单。提交代码到 GitHub 不等于通知用户，只有正式安装文件公开并成功更新清单，客户端才会发现新版本。
 
-手机版已有独立 [Gitee 源码仓库](https://gitee.com/openmusic/openmusic-mobile)。当前源码已加入双源更新器，优先国内同版本文件，并保留 GitHub 备用；它尚未进入正式 APK，已发布 0.1.3 仍只检查 GitHub。建立或推送 Gitee 源码不会改变旧客户端。2026-10-14 匿名检查手机版 Gitee 的 Releases 和国内文件 Contents 接口均返回 HTTP 200 + `[]`，当时尚无正式 APK 或国内清单；因此本次不写占位清单、不把测试 APK 提供给稳定通道。本轮验证见 [QA-DOMESTIC-UPDATES.md](QA-DOMESTIC-UPDATES.md)。
+手机版已有独立 [Gitee 源码仓库](https://gitee.com/openmusic/openmusic-mobile)。0.1.4 正式 APK 加入双源更新器，优先国内同版本文件，并保留 GitHub 备用；0.1.3 仍只检查 GitHub，需先经 GitHub 更新或手动覆盖安装 0.1.4。建立或推送源码不会改变旧客户端。0.1.4 的最终附件、更新清单与正式覆盖升级结果见 [QA-0.1.4.md](QA-0.1.4.md)。2026-10-14 尚无国内附件时的受控验证保留在 [QA-DOMESTIC-UPDATES.md](QA-DOMESTIC-UPDATES.md)，不代替正式线上校验。
 
-## 国内检查和下载（当前源码，未发布）
+## 国内检查和下载（0.1.4 起）
 
 - 并行读取 Gitee 固定 Contents API `https://gitee.com/api/v5/repos/openmusic/openmusic-mobile/contents/updates/domestic.json?ref=main` 与现有 GitHub `stable.json`，两源有独立连接和 12 秒检查预算。Gitee 文件封装限 128 KiB，只接收 `type=file`、`encoding=base64`、`name=domestic.json`、`path=updates/domestic.json`；严格核对规范 Base64、解码大小及 UTF-8，清单限 64 KiB。不跟随封装中的 `download_url`。
 - 选择有效清单中的较新版本；同版本、versionCode、大小和 SHA-256 一致时优先 Gitee。同版本文件冲突、重复使用 versionCode 或语义版本与 versionCode 顺序矛盾会停止更新。单源缺失 / 非法 / 超时可用另一源；同会话不因镜像落后丢失已确认的新版提示。
@@ -55,15 +55,15 @@ Android 普通应用不能静默覆盖安装。安装 APK 时必须经过 Androi
 1. 在手机版仓库执行版本管理脚本，递增版本和 Android versionCode。例如下一版本：
 
    ```sh
-   node scripts/set-version.mjs 0.1.3 4
+   node scripts/set-version.mjs 0.1.5 6
    ```
 
 2. 补充 `CHANGELOG.md` 对应版本章节，完成类型、业务、生产构建及原生／界面验收，提交、推送源码。
 3. 给发布提交建立并推送 `android-vX.Y.Z` 标签。例如：
 
    ```sh
-   git tag android-v0.1.3
-   git push origin android-v0.1.3
+   git tag android-v0.1.5
+   git push origin android-v0.1.5
    ```
 
 4. Actions 安装 Node 24、JDK 21、SDK 36 和项目要求的 Build-Tools，运行业务、发布保护及 Android 单元测试，构建签名 APK。`verify-android-release.mjs` 核对实际 APK 包名 `com.yuyin.music.mobile`、版本、versionCode 和签名。

@@ -1,5 +1,18 @@
 # Android 发布文件
 
+## 0.1.4 功能同步与国内更新
+
+正式版本：[GitHub android-v0.1.4](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.4)、[Gitee android-v0.1.4](https://gitee.com/openmusic/openmusic-mobile/releases/tag/android-v0.1.4)。每个平台只提供一个相同的 `Yuyin-Mobile-0.1.4.apk`，versionCode 5。功能包括 PC 0.5.3 适用功能同步、Android 悬浮歌词、原生后台切歌与睡眠定时、备份恢复、重播进度修复及 Gitee 优先的双源更新。
+
+| 项目 | 值 |
+| --- | --- |
+| APK 实际构建及标签提交 | `2a4e32edbf3479ec876310f8bdafe65177ed8e36` |
+| APK SHA-256 | `dcb0b43bc208450a5172663fa24c6c3852d288196aaa28a5c4c38f69eaf50f8c` |
+| APK 字节数 | `3371835` |
+| 签名证书 SHA-256 | `068675cef3bd1e3402408efa3ddf0a26f2827b460945d8780072460cdfc78146` |
+
+正式包从干净提交构建，沿用原签名和数据目录，独立测试实例从正式 0.1.3 覆盖安装后保留虚构音乐库与偏好，启动正常。构建、线上渠道与验证限制见 [QA-0.1.4.md](QA-0.1.4.md)。0.1.3 先经 GitHub 更新或手动覆盖安装一次；0.1.2 及更早需手动安装本版。安装始终需要 Android 系统确认。
+
 ## 0.1.3 应用内更新
 
 正式更新通道：[android-v0.1.3](https://github.com/panda472328/yuyin-music-mobile/releases/tag/android-v0.1.3)，唯一安装文件为 `Yuyin-Mobile-0.1.3.apk`，versionCode 4。旧版先手动覆盖安装这一版本，之后可以自动检查新版并选择更新。安装继续需要 Android 系统确认，沿用原签名、应用 ID 和数据目录。
