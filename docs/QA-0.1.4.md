@@ -41,6 +41,8 @@ GitHub 正式发布时间为 `2026-10-15T02:45:45Z`，[正式发布页](https://
 
 两个通道使用相同的版本、versionCode、字节数和 SHA-256，保留各自固定的官方地址。每个发布页只保留一个最终 APK。本轮正式签名升级通过 ADB 完成；线上国内附件通过匿名下载工具验证，原生双源选择、下载与安装权限的受控结果见既有 [国内验证](QA-DOMESTIC-UPDATES.md)。这不等同于在正式 APK 内完成了 Gitee 下载与系统安装全流程，亦不确认所有手机网络环境可达。
 
+`2026-10-15T02:49:19Z` 再次匿名回读：GitHub latest 为 `android-v0.1.4`，`stable.json` 和 Gitee Contents API 中的 `domestic.json` 均为 0.1.4 / 5，文件摘要、大小、说明和发布时间一致；Gitee 清单与本地候选逐项一致，两个发布页各有一个正确附件。[本版发布事件 Actions](https://github.com/panda472328/yuyin-music-mobile/actions/runs/38672701778) 已完成并成功，复核原始正式 APK 后维护稳定通道。
+
 0.1.3 仅含 GitHub 更新器，需先经 GitHub 或手动覆盖安装本版；0.1.2 及更早需手动安装。本版才包含 Gitee 优先、GitHub 备用的双源更新逻辑。APK 安装仍需用户在 Android 系统中确认，不做静默安装或增量更新。
 
 真实账号长时间播放、真实评论写操作、Android 12+ 悬浮歌词触摸穿透和不同真机的省电策略仍未验证。应用进程被系统终止后不能保证继续播放。
